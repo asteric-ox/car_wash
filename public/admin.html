@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D2 Admin | Management Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Syncopate:wght@700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --brand-dark: #0f172a;
+            --brand-primary: #06b6d4;
+            --brand-secondary: #64748b;
+            --brand-accent: #f59e0b;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--brand-dark);
+            color: white;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 24px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--brand-primary);
+            box-shadow: 0 10px 30px -10px rgba(6, 182, 212, 0.3);
+        }
+
+        .nav-link {
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .nav-link.active {
+            color: var(--brand-primary);
+        }
+
+        .nav-link.active::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: var(--brand-primary);
+            box-shadow: 0 0 10px var(--brand-primary);
+        }
+
+        .btn-gradient {
+            background: linear-gradient(180deg, #22d3ee 0%, #06b6d4 100%);
+            transition: all 0.3s ease;
+        }
+
+        .btn-gradient:hover {
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.5);
+            transform: scale(1.02);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--brand-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--brand-primary);
+        }
+
+        @keyframes scanline {
+            0% {
+                transform: translateY(-100%);
+            }
+
+            100% {
+                transform: translateY(100vh);
+            }
+        }
+
+        .scanline {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: rgba(6, 182, 212, 0.1);
+            pointer-events: none;
+            z-index: 100;
+            animation: scanline 8s linear infinite;
+        }
+
+        table tr {
+            transition: all 0.2s ease;
+        }
+
+        table tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-pending {
+            background: rgba(245, 158, 11, 0.1);
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+
+        .status-washing {
+            background: rgba(6, 182, 212, 0.1);
+            color: #06b6d4;
+            border: 1px solid rgba(6, 182, 212, 0.2);
+        }
+
+        .status-completed {
+            background: rgba(16, 185, 129, 0.1);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .status-cancelled {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+    </style>
+</head>
+
+<body class="bg-[#0b1121]">
+    <div class="scanline"></div>
+
+    <!-- Sidebar / Nav -->
+    <nav
+        class="fixed top-0 left-0 h-full w-20 lg:w-64 glass-panel border-r border-white/5 z-50 transition-all duration-500">
+        <div class="p-6 flex items-center gap-3">
+            <img src="images/d2_logo.png" alt="D2" class="w-10 h-10 object-contain">
+            <span class="font-bold text-xl tracking-tighter hidden lg:block" style="font-family: 'Syncopate';">D2
+                ADMIN</span>
+        </div>
+
+        <div class="mt-10 px-4 space-y-2">
+            <button onclick="showPanel('dashboard')"
+                class="nav-link active w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 group"
+                id="nav-dashboard">
+                <i class="fa-solid fa-chart-pie text-lg group-hover:text-brand-primary"></i>
+                <span class="font-medium hidden lg:block">Overview</span>
+            </button>
+            <button onclick="showPanel('bookings')"
+                class="nav-link w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 group"
+                id="nav-bookings">
+                <i class="fa-solid fa-calendar-check text-lg group-hover:text-brand-primary"></i>
+                <span class="font-medium hidden lg:block">Bookings</span>
+            </button>
+            <button onclick="showPanel('users')"
+                class="nav-link w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 group" id="nav-users">
+                <i class="fa-solid fa-users text-lg group-hover:text-brand-primary"></i>
+                <span class="font-medium hidden lg:block">Customers</span>
+            </button>
+            <button onclick="showPanel('stations')"
+                class="nav-link w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 group"
+                id="nav-stations">
+                <i class="fa-solid fa-car-on text-lg group-hover:text-brand-primary"></i>
+                <span class="font-medium hidden lg:block">Stations</span>
+            </button>
+        </div>
+
+        <div class="absolute bottom-6 left-0 w-full px-4">
+            <button onclick="logout()"
+                class="w-full flex items-center gap-4 p-4 rounded-2xl text-red-400 hover:bg-red-400/5 transition-all">
+                <i class="fa-solid fa-right-from-bracket text-lg"></i>
+                <span class="font-medium hidden lg:block">Logout</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="ml-20 lg:ml-64 p-8 transition-all duration-500 min-h-screen">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-10">
+            <div>
+                <h1 class="text-3xl font-bold text-white mb-1" id="panel-title">Dashboard</h1>
+                <p class="text-slate-500 text-sm">Welcome back, <span class="text-brand-primary font-bold">Admin</span>
+                </p>
+            </div>
+            <div class="flex items-center gap-6">
+                <div class="text-right hidden sm:block">
+                    <p class="text-xs text-slate-500 uppercase font-bold tracking-widest">System Status</p>
+                    <p class="text-xs text-green-400 flex items-center justify-end gap-1 font-bold">
+                        <span class="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse"></span> FULLY OPERATIONAL
+                    </p>
+                </div>
+                <div
+                    class="h-12 w-12 rounded-2xl glass-panel flex items-center justify-center text-brand-primary text-xl">
+                    <i class="fa-solid fa-headset"></i>
+                </div>
+            </div>
+        </header>
+
+        <!-- DASHBOARD PANEL -->
+        <div id="panel-dashboard" class="panel-view space-y-8">
+            <!-- Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="stat-card p-6 rounded-3xl">
+                    <div class="flex justify-between items-start mb-4">
+                        <div
+                            class="h-10 w-10 bg-brand-primary/10 rounded-xl flex items-center justify-center text-brand-primary">
+                            <i class="fa-solid fa-indian-rupee-sign"></i>
+                        </div>
+                        <span
+                            class="text-xs text-green-400 font-bold bg-green-400/10 px-2 py-1 rounded-lg">+12.5%</span>
+                    </div>
+                    <p class="text-slate-500 text-sm font-medium">Total Revenue</p>
+                    <h3 class="text-2xl font-bold mt-1" id="stat-revenue">₹0</h3>
+                </div>
+                <div class="stat-card p-6 rounded-3xl">
+                    <div class="flex justify-between items-start mb-4">
+                        <div
+                            class="h-10 w-10 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-400">
+                            <i class="fa-solid fa-calendar-check"></i>
+                        </div>
+                        <span
+                            class="text-xs text-brand-primary font-bold bg-brand-primary/10 px-2 py-1 rounded-lg">LIVE</span>
+                    </div>
+                    <p class="text-slate-500 text-sm font-medium">Active Bookings</p>
+                    <h3 class="text-2xl font-bold mt-1" id="stat-bookings">0</h3>
+                </div>
+                <div class="stat-card p-6 rounded-3xl">
+                    <div class="flex justify-between items-start mb-4">
+                        <div
+                            class="h-10 w-10 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-400">
+                            <i class="fa-solid fa-gem"></i>
+                        </div>
+                    </div>
+                    <p class="text-slate-500 text-sm font-medium">Active Members</p>
+                    <h3 class="text-2xl font-bold mt-1" id="stat-subs">0</h3>
+                </div>
+                <div class="stat-card p-6 rounded-3xl">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="h-10 w-10 bg-pink-500/10 rounded-xl flex items-center justify-center text-pink-400">
+                            <i class="fa-solid fa-users"></i>
+                        </div>
+                    </div>
+                    <p class="text-slate-500 text-sm font-medium">Total Customers</p>
+                    <h3 class="text-2xl font-bold mt-1" id="stat-users">0</h3>
+                </div>
+            </div>
+
+            <div class="grid lg:grid-cols-3 gap-8">
+                <!-- Recent Bookings -->
+                <div class="lg:col-span-2 glass-panel p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h4 class="text-xl font-bold">Recent Appointments</h4>
+                        <button onclick="showPanel('bookings')"
+                            class="text-brand-primary text-xs font-bold uppercase tracking-wider hover:underline">View
+                            All</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="text-xs text-slate-500 uppercase tracking-widest border-b border-white/5">
+                                <tr>
+                                    <th class="pb-4 font-bold">Customer</th>
+                                    <th class="pb-4 font-bold">Vehicle</th>
+                                    <th class="pb-4 font-bold">Status</th>
+                                    <th class="pb-4 font-bold">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-bookings-list" class="text-sm">
+                                <!-- Loading state -->
+                                <tr>
+                                    <td colspan="4" class="py-10 text-center text-slate-500">Loading records...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Station Status Control -->
+                <div class="glass-panel p-6">
+                    <h4 class="text-xl font-bold mb-6">Live Shop Status</h4>
+                    <div class="space-y-6">
+                        <div class="p-4 rounded-2xl bg-white/5 border border-white/5">
+                            <label class="flex items-center justify-between mb-2">
+                                <span class="text-sm text-slate-300 font-bold uppercase tracking-wider">Station 1</span>
+                                <div class="flex items-center gap-2">
+                                    <span id="station-dot" class="h-2 w-2 rounded-full bg-green-400"></span>
+                                    <span id="station-text"
+                                        class="text-[10px] font-bold text-green-400">AVAILABLE</span>
+                                </div>
+                            </label>
+
+                            <div class="flex flex-col gap-3 mt-4">
+                                <input type="text" id="current-vehicle-input"
+                                    placeholder="Washing Vehicle (e.g. KL-01-1234)"
+                                    class="w-full bg-black/20 border border-white/10 p-3 rounded-xl text-xs outline-none focus:border-brand-primary">
+
+                                <div class="flex gap-2">
+                                    <button onclick="updateShopStatus(true)"
+                                        class="flex-1 py-3 px-4 rounded-xl bg-red-500/10 text-red-400 text-xs font-bold border border-red-500/20 hover:bg-red-500/20 transition-all">SET
+                                        BUSY</button>
+                                    <button onclick="updateShopStatus(false)"
+                                        class="flex-1 py-3 px-4 rounded-xl bg-green-500/10 text-green-400 text-xs font-bold border border-green-500/20 hover:bg-green-500/20 transition-all">SET
+                                        FREE</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-4 rounded-2xl bg-brand-primary/5 border border-brand-primary/10">
+                            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest mb-1">Active
+                                Broadcast</p>
+                            <p class="text-sm italic">Status updates are visible instantly to all visitors.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOOKINGS PANEL -->
+        <div id="panel-bookings" class="panel-view hidden space-y-6">
+            <div class="glass-panel p-6">
+                <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-8">
+                    <div class="relative w-full md:w-96">
+                        <i
+                            class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                        <input type="text" placeholder="Search vehicle, name or phone..."
+                            class="w-full bg-white/5 border border-white/10 pl-12 pr-4 py-3 rounded-2xl outline-none focus:border-brand-primary tracking-wide transition-all">
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <input type="date" id="booking-filter-date"
+                            class="bg-white/5 border border-white/10 px-4 py-3 rounded-2xl outline-none text-sm scheme-dark"
+                            onchange="loadBookingsList()">
+                        <button onclick="loadBookingsList()"
+                            class="btn-gradient px-6 py-3 rounded-2xl text-brand-dark font-bold text-sm shadow-xl shadow-cyan-500/20">REFRESH</button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="text-xs text-slate-500 uppercase tracking-widest border-b border-white/5">
+                            <tr>
+                                <th class="pb-4 pl-4 font-bold">Order ID</th>
+                                <th class="pb-4 font-bold">Customer</th>
+                                <th class="pb-4 font-bold">Vehicle</th>
+                                <th class="pb-4 font-bold">Package</th>
+                                <th class="pb-4 font-bold">Date & Time</th>
+                                <th class="pb-4 font-bold">Status</th>
+                                <th class="pb-4 font-bold">Control</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bookings-full-list" class="text-sm">
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- USERS PANEL -->
+        <div id="panel-users" class="panel-view hidden">
+            <div class="glass-panel p-6">
+                <h4 class="text-xl font-bold mb-6">Customer Database</h4>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="text-xs text-slate-500 uppercase tracking-widest border-b border-white/5">
+                            <tr>
+                                <th class="pb-4 pl-4 font-bold">UID</th>
+                                <th class="pb-4 font-bold">Name</th>
+                                <th class="pb-4 font-bold">Email</th>
+                                <th class="pb-4 font-bold">Phone</th>
+                                <th class="pb-4 font-bold">Joined</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-list" class="text-sm">
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- STATIONS PANEL -->
+        <div id="panel-stations" class="panel-view hidden">
+            <div class="grid md:grid-cols-2 gap-8">
+                <!-- Stationary management simplified -->
+                <div class="glass-panel p-8 text-center py-20">
+                    <i class="fa-solid fa-wrench text-6xl text-slate-700 mb-6"></i>
+                    <h3 class="text-2xl font-bold mb-2">Station Management</h3>
+                    <p class="text-slate-500">Advanced multi-station control is under maintenance.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Global State
+        let currentActivePanel = 'dashboard';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+            loadAnalytics();
+            loadRecentBookings();
+
+            // Auto refresh stats every minute
+            setInterval(loadAnalytics, 60000);
+        });
+
+        async function checkAuth() {
+            try {
+                const res = await fetch('/api/check-auth');
+                const data = await res.json();
+                if (!data.authenticated || (data.user.role !== 'admin' && data.user.email !== 'delvindavis031@gmail.com')) {
+                    alert('Unauthorized access. Redirecting to login.');
+                    window.location.href = '/index.html';
+                }
+            } catch (e) {
+                window.location.href = '/index.html';
+            }
+        }
+
+        async function loadAnalytics() {
+            try {
+                const res = await fetch('/api/admin/analytics');
+                const data = await res.json();
+
+                document.getElementById('stat-revenue').textContent = `₹${Math.floor(data.revenue).toLocaleString()}`;
+                document.getElementById('stat-bookings').textContent = data.total_bookings;
+                document.getElementById('stat-users').textContent = data.total_users;
+                document.getElementById('stat-subs').textContent = data.active_subscriptions;
+            } catch (e) {
+                console.error("Analytics load failed");
+            }
+        }
+
+        async function loadRecentBookings() {
+            try {
+                const res = await fetch('/api/admin/bookings');
+                const bookings = await res.json();
+
+                const list = document.getElementById('recent-bookings-list');
+                list.innerHTML = '';
+
+                bookings.slice(0, 8).forEach(b => {
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b border-white/5";
+                    tr.innerHTML = `
+                        <td class="py-4">
+                            <div class="font-bold">${b.customer_name}</div>
+                            <div class="text-[10px] text-slate-500 uppercase">${b.phone || 'No Phone'}</div>
+                        </td>
+                        <td class="py-4">
+                            <div class="text-xs font-mono tracking-wider">${b.vehicle_number || 'N/A'}</div>
+                            <div class="text-[10px] text-brand-primary">${b.vehicle_type}</div>
+                        </td>
+                        <td class="py-4">
+                            <span class="status-badge status-${b.status.toLowerCase()}">${b.status}</span>
+                        </td>
+                        <td class="py-4">
+                            <button onclick="quickUpdateStatus(${b.id}, 'Washing')" class="text-brand-primary hover:text-white transition"><i class="fa-solid fa-play"></i></button>
+                        </td>
+                    `;
+                    list.appendChild(tr);
+                });
+
+                if (bookings.length === 0) {
+                    list.innerHTML = '<tr><td colspan="4" class="py-8 text-center text-slate-500 italic">No bookings found</td></tr>';
+                }
+            } catch (e) {
+                console.error("Bookings load failed");
+            }
+        }
+
+        async function loadBookingsList() {
+            const date = document.getElementById('booking-filter-date').value;
+            const url = date ? `/api/admin/bookings?date=${date}` : '/api/admin/bookings';
+
+            try {
+                const res = await fetch(url);
+                const bookings = await res.json();
+                const list = document.getElementById('bookings-full-list');
+                list.innerHTML = '';
+
+                bookings.forEach(b => {
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b border-white/5 hover:bg-white/5 transition-all";
+                    tr.innerHTML = `
+                        <td class="py-4 pl-4 font-mono text-xs text-slate-500">#${b.id.toString().padStart(4, '0')}</td>
+                        <td class="py-4">
+                            <div class="font-bold">${b.customer_name}</div>
+                            <div class="text-[10px] text-slate-500">${b.email || ''}</div>
+                        </td>
+                        <td class="py-4 font-mono text-xs uppercase tracking-wider">${b.vehicle_number || 'N/A'}</td>
+                        <td class="py-4 text-xs font-bold text-brand-primary">${b.service_package}</td>
+                        <td class="py-4">
+                            <div class="text-xs font-bold">${b.appointment_date}</div>
+                            <div class="text-[10px] text-slate-500">${b.appointment_time}</div>
+                        </td>
+                        <td class="py-4">
+                            <span class="status-badge status-${b.status.toLowerCase()}">${b.status}</span>
+                        </td>
+                        <td class="py-4">
+                            <select onchange="updateBookingStatus(${b.id}, this.value)" class="bg-slate-800 border border-white/10 text-[10px] p-1 rounded outline-none focus:border-brand-primary">
+                                <option value="" disabled selected>Update</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Approved">Approve</option>
+                                <option value="Washing">Washing</option>
+                                <option value="Drying">Drying</option>
+                                <option value="Completed">Complete</option>
+                                <option value="Cancelled">Cancel</option>
+                            </select>
+                        </td>
+                    `;
+                    list.appendChild(tr);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function loadUsersList() {
+            try {
+                const res = await fetch('/api/admin/users');
+                const users = await res.json();
+                const list = document.getElementById('users-list');
+                list.innerHTML = '';
+
+                users.forEach(u => {
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b border-white/5";
+                    tr.innerHTML = `
+                        <td class="py-4 pl-4 text-slate-500">U-${u.id}</td>
+                        <td class="py-4 font-bold text-brand-primary">${u.fullname}</td>
+                        <td class="py-4 text-slate-300 text-xs">${u.email || '-'}</td>
+                        <td class="py-4 text-slate-300 text-xs">${u.phone}</td>
+                        <td class="py-4 text-slate-500 text-[10px] uppercase font-bold">${new Date(u.created_at).toLocaleDateString()}</td>
+                    `;
+                    list.appendChild(tr);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function updateBookingStatus(id, status) {
+            try {
+                const res = await fetch('/api/admin/booking/status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, status })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    loadRecentBookings();
+                    if (currentActivePanel === 'bookings') loadBookingsList();
+                }
+            } catch (e) { alert("Update failed"); }
+        }
+
+        async function quickUpdateStatus(id, status) {
+            await updateBookingStatus(id, status);
+        }
+
+        async function updateShopStatus(isBusy) {
+            const currentVehicle = document.getElementById('current-vehicle-input').value;
+            const btn = event.target;
+            const originalText = btn.textContent;
+
+            btn.textContent = "...";
+
+            try {
+                const res = await fetch('/api/admin/status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_busy: isBusy, current_vehicle: isBusy ? currentVehicle : '' })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const dot = document.getElementById('station-dot');
+                    const text = document.getElementById('station-text');
+
+                    if (isBusy) {
+                        dot.className = "h-2 w-2 rounded-full bg-red-400 animate-pulse";
+                        text.className = "text-[10px] font-bold text-red-400";
+                        text.textContent = "BUSY: " + (currentVehicle || 'Vehicle');
+                    } else {
+                        dot.className = "h-2 w-2 rounded-full bg-green-400";
+                        text.className = "text-[10px] font-bold text-green-400";
+                        text.textContent = "AVAILABLE";
+                        document.getElementById('current-vehicle-input').value = '';
+                    }
+                }
+            } catch (e) { alert("Status update failed"); }
+            finally { btn.textContent = originalText; }
+        }
+
+        function showPanel(panel) {
+            // Hide all
+            document.querySelectorAll('.panel-view').forEach(p => p.classList.add('hidden'));
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+
+            // Show target
+            document.getElementById(`panel-${panel}`).classList.remove('hidden');
+            document.getElementById(`nav-${panel}`).classList.add('active');
+
+            document.getElementById('panel-title').textContent = panel.charAt(0).toUpperCase() + panel.slice(1);
+
+            currentActivePanel = panel;
+
+            if (panel === 'bookings') loadBookingsList();
+            if (panel === 'users') loadUsersList();
+            if (panel === 'dashboard') {
+                loadAnalytics();
+                loadRecentBookings();
+            }
+        }
+
+        async function logout() {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/index.html';
+        }
+    </script>
+</body>
+
+</html>

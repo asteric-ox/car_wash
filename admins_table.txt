@@ -1,0 +1,6 @@
+﻿Field	Type	Null	Key	Default	Extra
+id	int	NO	PRI	NULL	auto_increment
+username	varchar(255)	NO	UNI	NULL	
+password	varchar(255)	NO		NULL	
+role	varchar(50)	YES		staff	
+created_at	timestamp	YES		CURRENT_TIMESTAMP	DEFAULT_GENERATED
