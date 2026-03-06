@@ -35,26 +35,48 @@ app.config.update(
 # =========================
 # DATABASE CONNECTION
 # =========================
+def get_db_params():
+    return {
+        "host": os.getenv('MYSQLHOST', os.getenv('DB_HOST', 'localhost')),
+        "user": os.getenv('MYSQLUSER', os.getenv('DB_USER', 'root')),
+        "password": os.getenv('MYSQLPASSWORD', os.getenv('DB_PASS', 'Delvin@2005')),
+        "database": os.getenv('MYSQLDATABASE', os.getenv('DB_NAME', 'car_wash')),
+        "port": int(os.getenv('MYSQLPORT', 3306))
+    }
+
 def get_db():
-    host = os.getenv('DB_HOST', 'localhost')
-    user = os.getenv('DB_USER', 'root')
-    db_name = os.getenv('DB_NAME', 'railway')
+    params = get_db_params()
     # Do not print password for security
-    print(f"DEBUG: Connecting to {user}@{host}/{db_name}")
+    print(f"DEBUG: Connecting to {params['user']}@{params['host']}:{params['port']}/{params['database']}")
     return mysql.connector.connect(
-        host=host,
-        user=user,
-        password=os.getenv('DB_PASS', 'Delvin@2005'),
-        database=db_name,
+        host=params['host'],
+        user=params['user'],
+        password=params['password'],
+        database=params['database'],
+        port=params['port'],
         connection_timeout=10,
         buffered=True
     )
 
 def init_db():
     try:
-        # Connect directly to the database provided by Railway
-        db_name = os.getenv('DB_NAME', 'railway')
-        print(f"DEBUG: Initializing tables in DB: {db_name}")
+        params = get_db_params()
+        
+        # Step 1: Connect WITHOUT database name to create it if missing (Fix Method 1)
+        print(f"DEBUG: Checking if database {params['database']} exists...")
+        temp_conn = mysql.connector.connect(
+            host=params['host'],
+            user=params['user'],
+            password=params['password'],
+            port=params['port']
+        )
+        temp_cursor = temp_conn.cursor()
+        temp_cursor.execute(f"CREATE DATABASE IF NOT EXISTS {params['database']}")
+        temp_cursor.close()
+        temp_conn.close()
+        print(f"Database {params['database']} initialized successfully")
+
+        # Step 2: Connect TO the database and create tables
         conn = get_db()
         cursor = conn.cursor()
 
