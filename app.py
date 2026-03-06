@@ -36,11 +36,16 @@ app.config.update(
 # DATABASE CONNECTION
 # =========================
 def get_db():
+    host = os.getenv('DB_HOST', 'localhost')
+    user = os.getenv('DB_USER', 'root')
+    db_name = os.getenv('DB_NAME', 'car_wash')
+    # Do not print password for security
+    print(f"DEBUG: Connecting to {user}@{host}/{db_name}")
     return mysql.connector.connect(
-        host=os.getenv('DB_HOST', 'localhost'),
-        user=os.getenv('DB_USER', 'root'),
+        host=host,
+        user=user,
         password=os.getenv('DB_PASS', 'Delvin@2005'),
-        database=os.getenv('DB_NAME', 'car_wash')
+        database=db_name
     )
 
 def init_db():
