@@ -45,17 +45,8 @@ def get_db():
 
 def init_db():
     try:
-        # Create Database if not exists
-        temp_conn = mysql.connector.connect(
-            host=os.getenv('DB_HOST', 'localhost'),
-            user=os.getenv('DB_USER', 'root'),
-            password=os.getenv('DB_PASS', 'Delvin@2005')
-        )
-        cursor = temp_conn.cursor()
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {os.getenv('DB_NAME', 'car_wash')}")
-        cursor.close()
-        temp_conn.close()
-
+        # Connect directly to the database provided by Railway
+        print(f"DEBUG: Attempting to connect to DB: {os.getenv('DB_NAME', 'railway')}")
         conn = get_db()
         cursor = conn.cursor()
 
@@ -64,11 +55,11 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
             fullname VARCHAR(255),
-            name VARCHAR(255),  -- For compatibility
+            name VARCHAR(255),
             email VARCHAR(255) UNIQUE,
             phone VARCHAR(50) UNIQUE,
             password VARCHAR(255),
-            password_hash VARCHAR(255), -- For compatibility
+            password_hash VARCHAR(255),
             role ENUM('admin','staff','customer') DEFAULT 'customer',
             status ENUM('active','inactive') DEFAULT 'active',
             stamps INT DEFAULT 0,
@@ -77,14 +68,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
-
-        # Add missing columns if table already exists
-        try:
-            cursor.execute("ALTER TABLE users ADD COLUMN reset_otp VARCHAR(6) AFTER stamps")
-        except: pass
-        try:
-            cursor.execute("ALTER TABLE users ADD COLUMN otp_expiry DATETIME AFTER reset_otp")
-        except: pass
 
         # Vehicles Table
         cursor.execute("""
@@ -107,7 +90,7 @@ def init_db():
         )
         """)
 
-        # Bookings Table
+        # Bookings Table (Updated status for VARCHAR)
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS bookings (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -120,8 +103,8 @@ def init_db():
             service_package VARCHAR(100),
             appointment_date DATE,
             appointment_time TIME,
-            booking_date DATE, -- For compatibility
-            booking_time TIME, -- For compatibility
+            booking_date DATE,
+            booking_time TIME,
             addons TEXT,
             location VARCHAR(255),
             is_pickup BOOLEAN DEFAULT 0,
@@ -132,113 +115,19 @@ def init_db():
         )
         """)
 
-        # Admins Table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS admins (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            username VARCHAR(255) UNIQUE NOT NULL,
-            password VARCHAR(255) NOT NULL,
-            role VARCHAR(50) DEFAULT 'staff',
-            token VARCHAR(255) NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        # Shop Status Table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS shop_status (
-            id INT PRIMARY KEY,
-            status VARCHAR(50) DEFAULT 'OPEN',
-            message VARCHAR(255),
-            is_busy BOOLEAN DEFAULT 0,
-            current_vehicle VARCHAR(255),
-            pickup_active BOOLEAN DEFAULT 1,
-            queue_count INT DEFAULT 0,
-            wait_time INT DEFAULT 0,
-            updated_by VARCHAR(255),
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-        """)
-
-        # Add missing columns if table already exists
-        columns_to_add = [
-            ("status", "VARCHAR(50) DEFAULT 'OPEN'"),
-            ("pickup_active", "BOOLEAN DEFAULT 1"),
-            ("queue_count", "INT DEFAULT 0"),
-            ("wait_time", "INT DEFAULT 0"),
-            ("updated_by", "VARCHAR(255)")
-        ]
-        for col_name, col_def in columns_to_add:
-            try:
-                cursor.execute(f"ALTER TABLE shop_status ADD COLUMN {col_name} {col_def}")
-            except: pass
-
-        # Fix bookings.status column — convert from ENUM to VARCHAR so pickup statuses work
-        try:
-            cursor.execute("ALTER TABLE bookings MODIFY COLUMN status VARCHAR(50) DEFAULT 'Pending'")
-        except: pass
-
-        # Notifications Table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS notifications (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            user_id INT,
-            message TEXT,
-            is_read BOOLEAN DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        # Staff Attendance Table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS staff_attendance (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            staff_id INT,
-            date DATE,
-            status ENUM('Present', 'Absent') DEFAULT 'Present',
-            notes TEXT,
-            FOREIGN KEY (staff_id) REFERENCES users(id)
-        )
-        """)
-
-        # Payments Table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS payments (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            booking_id INT,
-            amount DECIMAL(10, 2),
-            payment_method VARCHAR(50),
-            payment_status VARCHAR(50) DEFAULT 'paid'
-        )
-        """)
-
-        # Seed data
+        # Admins, Notifications, Staff, etc. (Other tables)
+        cursor.execute("CREATE TABLE IF NOT EXISTS admins (id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(255) UNIQUE NOT NULL, password VARCHAR(255) NOT NULL, role VARCHAR(50) DEFAULT 'staff', token VARCHAR(255) NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS shop_status (id INT PRIMARY KEY, status VARCHAR(50) DEFAULT 'OPEN', message VARCHAR(255), is_busy BOOLEAN DEFAULT 0, current_vehicle VARCHAR(255), pickup_active BOOLEAN DEFAULT 1, queue_count INT DEFAULT 0, wait_time INT DEFAULT 0, updated_by VARCHAR(255), updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)")
+        
+        # Seed default data if empty
         cursor.execute("SELECT COUNT(*) FROM services")
         if cursor.fetchone()[0] == 0:
-            services_data = [
-                ('Basic Wash', 200.00),
-                ('Normal', 350.00),
-                ('Super', 450.00),
-                ('Premium', 600.00),
-                ('Premium Plus', 800.00)
-            ]
+            services_data = [('Basic Wash', 200.00), ('Normal', 350.00), ('Super', 450.00), ('Premium', 600.00), ('Premium Plus', 800.00)]
             cursor.executemany("INSERT INTO services (service_name, price) VALUES (%s, %s)", services_data)
 
         cursor.execute("SELECT COUNT(*) FROM shop_status")
         if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                INSERT INTO shop_status (id, status, message, is_busy, pickup_active, queue_count, wait_time) 
-                VALUES (1, 'OPEN', 'Ready to Shine!', 0, 1, 0, 0)
-            """)
-
-        # Seed staff account if doesn't exist
-        cursor.execute("SELECT COUNT(*) FROM users WHERE email = 'staff@123'")
-        if cursor.fetchone()[0] == 0:
-            staff_pw = generate_password_hash("staff@123")
-            cursor.execute("""
-                INSERT INTO users (fullname, email, phone, password, password_hash, role)
-                VALUES ('D2 Staff', 'staff@123', '9999999999', %s, %s, 'staff')
-            """, (staff_pw, staff_pw))
+            cursor.execute("INSERT INTO shop_status (id, status, message) VALUES (1, 'OPEN', 'Ready to Shine!')")
 
         conn.commit()
         cursor.close()
