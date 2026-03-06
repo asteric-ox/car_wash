@@ -1891,8 +1891,14 @@ def send_verified_email(name, to_email, vehicle_no):
         server.quit()
     except Exception as e:
         print(f"DEBUG: Verified email error: {e}")
-if __name__ == "__main__":
+# =========================
+# INITIALIZATION
+# =========================
+try:
     init_db()
-    port = int(os.getenv('PORT', 5000))
-    print(f"Server running on http://localhost:{port}")
-    app.run(host='0.0.0.0', port=port, debug=True)
+except Exception as e:
+    print(f"Startup Database Error: {e}")
+
+if __name__ == "__main__":
+    # Local run logic
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=True)
