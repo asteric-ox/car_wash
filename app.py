@@ -45,7 +45,9 @@ def get_db():
         host=host,
         user=user,
         password=os.getenv('DB_PASS', 'Delvin@2005'),
-        database=db_name
+        database=db_name,
+        connection_timeout=10,
+        buffered=True
     )
 
 def init_db():
