@@ -37,46 +37,49 @@ app.config.update(
 # =========================
 def get_db_params():
     return {
-        "host": os.getenv('MYSQLHOST', os.getenv('DB_HOST', 'localhost')),
-        "user": os.getenv('MYSQLUSER', os.getenv('DB_USER', 'root')),
-        "password": os.getenv('MYSQLPASSWORD', os.getenv('DB_PASS', 'Delvin@2005')),
-        "database": os.getenv('MYSQLDATABASE', os.getenv('DB_NAME', 'car_wash')),
-        "port": int(os.getenv('MYSQLPORT', 3306))
+        "host": os.getenv("MYSQLHOST", os.getenv("DB_HOST", "localhost")),
+        "user": os.getenv("MYSQLUSER", os.getenv("DB_USER", "root")),
+        "password": os.getenv("MYSQLPASSWORD", os.getenv("DB_PASS", "Delvin@2005")),
+        "database": os.getenv("MYSQLDATABASE", os.getenv("DB_NAME", "car_wash")),
+        "port": int(os.getenv("MYSQLPORT", 3306))
     }
 
 def get_db():
-    params = get_db_params()
-    # Do not print password for security
-    print(f"DEBUG: Connecting to {params['user']}@{params['host']}:{params['port']}/{params['database']}")
+    p = get_db_params()
+    # Debug print (hiding password)
+    print(f"DEBUG: Connecting to {p['user']}@{p['host']}:{p['port']}/{p['database']}")
     return mysql.connector.connect(
-        host=params['host'],
-        user=params['user'],
-        password=params['password'],
-        database=params['database'],
-        port=params['port'],
+        host=p["host"],
+        user=p["user"],
+        password=p["password"],
+        database=p["database"],
+        port=p["port"],
         connection_timeout=10,
         buffered=True
     )
 
-def init_db():
+def init_database():
+    p = get_db_params()
     try:
-        params = get_db_params()
-        
-        # Step 1: Connect WITHOUT database name to create it if missing (Fix Method 1)
-        print(f"DEBUG: Checking if database {params['database']} exists...")
-        temp_conn = mysql.connector.connect(
-            host=params['host'],
-            user=params['user'],
-            password=params['password'],
-            port=params['port']
+        # connect without database name FIRST to create it if missing (Method 1)
+        conn = mysql.connector.connect(
+            host=p["host"],
+            user=p["user"],
+            password=p["password"],
+            port=p["port"]
         )
-        temp_cursor = temp_conn.cursor()
-        temp_cursor.execute(f"CREATE DATABASE IF NOT EXISTS {params['database']}")
-        temp_cursor.close()
-        temp_conn.close()
-        print(f"Database {params['database']} initialized successfully")
+        cursor = conn.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {p['database']}")
+        print("Database initialized successfully")
+        cursor.close()
+        conn.close()
+    except Exception as err:
+        print("Error initializing database:", err)
 
-        # Step 2: Connect TO the database and create tables
+def init_db():
+    # Helper to call database creation and then table initialization
+    init_database()
+    try:
         conn = get_db()
         cursor = conn.cursor()
 
