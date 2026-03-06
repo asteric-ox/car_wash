@@ -36,12 +36,12 @@ app.config.update(
 # DATABASE CONNECTION
 # =========================
 def get_db_params():
-    # Railway provides these automatically if you have a MySQL service
+    # This checks BOTH Railway automatic names and your manual names
     return {
-        "host": os.getenv("MYSQLHOST", "mysql"),
-        "user": os.getenv("MYSQLUSER", "root"),
+        "host": os.getenv("MYSQLHOST", os.getenv("DB_HOST", "mysql")),
+        "user": os.getenv("MYSQLUSER", os.getenv("DB_USER", "root")),
         "password": os.getenv("MYSQLPASSWORD", os.getenv("DB_PASS", "Delvin@2005")),
-        "database": os.getenv("MYSQLDATABASE", "railway"),
+        "database": os.getenv("MYSQLDATABASE", os.getenv("DB_NAME", "railway")),
         "port": int(os.getenv("MYSQLPORT", 3306))
     }
 
