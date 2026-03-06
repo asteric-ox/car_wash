@@ -1,5 +1,5 @@
 [build]
-builder = "railpack"
+builder = "nixpacks"
 
 [deploy]
 startCommand = "gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:$PORT wsgi:application"
