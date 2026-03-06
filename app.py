@@ -38,7 +38,7 @@ app.config.update(
 def get_db():
     host = os.getenv('DB_HOST', 'localhost')
     user = os.getenv('DB_USER', 'root')
-    db_name = os.getenv('DB_NAME', 'car_wash')
+    db_name = os.getenv('DB_NAME', 'railway')
     # Do not print password for security
     print(f"DEBUG: Connecting to {user}@{host}/{db_name}")
     return mysql.connector.connect(
@@ -53,7 +53,8 @@ def get_db():
 def init_db():
     try:
         # Connect directly to the database provided by Railway
-        print(f"DEBUG: Attempting to connect to DB: {os.getenv('DB_NAME', 'railway')}")
+        db_name = os.getenv('DB_NAME', 'railway')
+        print(f"DEBUG: Initializing tables in DB: {db_name}")
         conn = get_db()
         cursor = conn.cursor()
 
