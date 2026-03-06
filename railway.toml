@@ -1,3 +1,6 @@
+[build]
+builder = "railpack"
+
 [deploy]
 startCommand = "gunicorn --bind 0.0.0.0:$PORT --pythonpath . wsgi:application"
 restartPolicyType = "on_failure"
