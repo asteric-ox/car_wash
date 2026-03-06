@@ -40,7 +40,7 @@ def get_db_params():
         "host": os.getenv("MYSQLHOST", os.getenv("DB_HOST", "localhost")),
         "user": os.getenv("MYSQLUSER", os.getenv("DB_USER", "root")),
         "password": os.getenv("MYSQLPASSWORD", os.getenv("DB_PASS", "Delvin@2005")),
-        "database": os.getenv("MYSQLDATABASE", os.getenv("DB_NAME", "car_wash")),
+        "database": os.getenv("MYSQLDATABASE", os.getenv("DB_NAME", "railway")),
         "port": int(os.getenv("MYSQLPORT", 3306))
     }
 
@@ -82,6 +82,7 @@ def init_db():
     try:
         conn = get_db()
         cursor = conn.cursor()
+        print(f"DEBUG: Successfully connected to DB. Starting table creation...")
 
         # Users Table
         cursor.execute("""
@@ -101,6 +102,7 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
+        print("DEBUG: Table 'users' checked/created.")
 
         # Vehicles Table
         cursor.execute("""
@@ -113,6 +115,7 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
         """)
+        print("DEBUG: Table 'vehicles' checked/created.")
 
         # Services Table
         cursor.execute("""
@@ -122,6 +125,7 @@ def init_db():
             price DECIMAL(10, 2)
         )
         """)
+        print("DEBUG: Table 'services' checked/created.")
 
         # Bookings Table (Updated status for VARCHAR)
         cursor.execute("""
@@ -147,20 +151,24 @@ def init_db():
             FOREIGN KEY (assigned_staff) REFERENCES users(id)
         )
         """)
+        print("DEBUG: Table 'bookings' checked/created.")
 
         # Admins, Notifications, Staff, etc. (Other tables)
         cursor.execute("CREATE TABLE IF NOT EXISTS admins (id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(255) UNIQUE NOT NULL, password VARCHAR(255) NOT NULL, role VARCHAR(50) DEFAULT 'staff', token VARCHAR(255) NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         cursor.execute("CREATE TABLE IF NOT EXISTS shop_status (id INT PRIMARY KEY, status VARCHAR(50) DEFAULT 'OPEN', message VARCHAR(255), is_busy BOOLEAN DEFAULT 0, current_vehicle VARCHAR(255), pickup_active BOOLEAN DEFAULT 1, queue_count INT DEFAULT 0, wait_time INT DEFAULT 0, updated_by VARCHAR(255), updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)")
+        print("DEBUG: Extra tables checked/created.")
         
         # Seed default data if empty
         cursor.execute("SELECT COUNT(*) FROM services")
         if cursor.fetchone()[0] == 0:
             services_data = [('Basic Wash', 200.00), ('Normal', 350.00), ('Super', 450.00), ('Premium', 600.00), ('Premium Plus', 800.00)]
             cursor.executemany("INSERT INTO services (service_name, price) VALUES (%s, %s)", services_data)
+            print("DEBUG: Default services seeded.")
 
         cursor.execute("SELECT COUNT(*) FROM shop_status")
         if cursor.fetchone()[0] == 0:
             cursor.execute("INSERT INTO shop_status (id, status, message) VALUES (1, 'OPEN', 'Ready to Shine!')")
+            print("DEBUG: Default shop_status seeded.")
 
         conn.commit()
         cursor.close()
