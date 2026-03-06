@@ -36,13 +36,35 @@ app.config.update(
 # DATABASE CONNECTION
 # =========================
 def get_db_params():
+    # Railway provides these automatically if you have a MySQL service
     return {
-        "host": os.getenv("MYSQLHOST", os.getenv("DB_HOST", "localhost")),
-        "user": os.getenv("MYSQLUSER", os.getenv("DB_USER", "root")),
+        "host": os.getenv("MYSQLHOST", "mysql"),
+        "user": os.getenv("MYSQLUSER", "root"),
         "password": os.getenv("MYSQLPASSWORD", os.getenv("DB_PASS", "Delvin@2005")),
-        "database": os.getenv("MYSQLDATABASE", os.getenv("DB_NAME", "railway")),
+        "database": os.getenv("MYSQLDATABASE", "railway"),
         "port": int(os.getenv("MYSQLPORT", 3306))
     }
+
+@app.route("/db-check")
+def db_check():
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SHOW TABLES")
+        tables = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return jsonify({
+            "status": "Connected Successfully ✅",
+            "database": get_db_params()['database'],
+            "tables_found": [list(t.values())[0] if isinstance(t, dict) else t[0] for t in tables]
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "Connection Failed ❌",
+            "error": str(e),
+            "tip": "Check if MYSQLPASSWORD is correct in your Flask Variables tab."
+        }), 500
 
 def get_db():
     p = get_db_params()
