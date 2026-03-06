@@ -1,11 +1,8 @@
 [phases.setup]
-nixPkgs = ["python311", "zbar", "libzbar"]
+nixPkgs = ["python311", "zbar", "gcc", "pkg-config"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
-
-[phases.build]
-cmds = ["echo 'Skipping build phase'"]
+cmds = ["pip install --upgrade pip", "pip install -r requirements.txt"]
 
 [start]
 cmd = "gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:$PORT wsgi:application"
