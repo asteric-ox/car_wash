@@ -10,6 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Syncopate:wght@700&display=swap"
         rel="stylesheet">
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root {
             --brand-dark: #0f172a;
@@ -150,6 +151,103 @@
             border: 1px solid rgba(16, 185, 129, 0.2);
         }
 
+        /* AUTH TRANSITION OVERLAY */
+        #auth-transition-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            background: #0f172a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+
+        #auth-transition-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .auth-scan-line {
+            position: absolute;
+            width: 100%;
+            height: 4px;
+            background: var(--brand-primary);
+            box-shadow: 0 0 20px var(--brand-primary);
+            top: -10%;
+            left: 0;
+            opacity: 0;
+            z-index: 10001;
+        }
+
+        .active .auth-scan-line {
+            animation: authScan 1.5s ease-in-out infinite;
+            opacity: 0.6;
+        }
+
+        @keyframes authScan {
+            0% {
+                top: -10%;
+            }
+
+            100% {
+                top: 110%;
+            }
+        }
+
+        .auth-glitch-text {
+            font-family: 'Syncopate', sans-serif;
+            font-weight: 700;
+            font-size: 2rem;
+            color: white;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+        }
+
+        .power-down {
+            animation: powerDown 1.2s forwards;
+        }
+
+        @keyframes powerDown {
+            0% {
+                transform: scaleY(1) scaleX(1);
+                filter: brightness(1);
+            }
+
+            40% {
+                transform: scaleY(0.005) scaleX(1.1);
+                filter: brightness(2);
+            }
+
+            100% {
+                transform: scaleY(0.005) scaleX(0);
+                filter: brightness(5);
+                opacity: 0;
+            }
+        }
+
+        .access-granted {
+            animation: accessGranted 0.8s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+        }
+
+        @keyframes accessGranted {
+            0% {
+                transform: scale(0.8);
+                opacity: 0;
+                letter-spacing: 20px;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+                letter-spacing: 4px;
+            }
+        }
+
         .status-cancelled {
             background: rgba(239, 68, 68, 0.1);
             color: #ef4444;
@@ -188,21 +286,26 @@
                 <i class="fa-solid fa-users text-lg group-hover:text-brand-primary"></i>
                 <span class="font-medium hidden lg:block">Customers</span>
             </button>
-            <button onclick="showPanel('stations')"
-                class="nav-link w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 group"
-                id="nav-stations">
-                <i class="fa-solid fa-car-on text-lg group-hover:text-brand-primary"></i>
-                <span class="font-medium hidden lg:block">Stations</span>
+            <button onclick="showPanel('pickup')"
+                class="nav-link w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 group" id="nav-pickup">
+                <i class="fa-solid fa-truck-pickup text-lg group-hover:text-brand-primary"></i>
+                <span class="font-medium hidden lg:block">Pickups</span>
+                <span id="pickup-badge"
+                    class="hidden ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5">NEW</span>
+            </button>
+            <button onclick="showPanel('status')"
+                class="nav-link w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 group" id="nav-status">
+                <i class="fa-solid fa-toggle-on text-lg group-hover:text-brand-primary"></i>
+                <span class="font-medium hidden lg:block">Live Status</span>
+            </button>
+            <button onclick="showPanel('staff')"
+                class="nav-link w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 group" id="nav-staff">
+                <i class="fa-solid fa-user-plus text-lg group-hover:text-brand-primary"></i>
+                <span class="font-medium hidden lg:block">Register Staff</span>
             </button>
         </div>
 
-        <div class="absolute bottom-6 left-0 w-full px-4">
-            <button onclick="logout()"
-                class="w-full flex items-center gap-4 p-4 rounded-2xl text-red-400 hover:bg-red-400/5 transition-all">
-                <i class="fa-solid fa-right-from-bracket text-lg"></i>
-                <span class="font-medium hidden lg:block">Logout</span>
-            </button>
-        </div>
+        <!-- Sidebar Bottom (Empty or for other links) -->
     </nav>
 
     <!-- Main Content -->
@@ -214,25 +317,36 @@
                 <p class="text-slate-500 text-sm">Welcome back, <span class="text-brand-primary font-bold">Admin</span>
                 </p>
             </div>
-            <div class="flex items-center gap-6">
-                <div class="text-right hidden sm:block">
+            <div class="flex items-center gap-4">
+                <div class="text-right hidden sm:block mr-4 border-r border-white/10 pr-4">
                     <p class="text-xs text-slate-500 uppercase font-bold tracking-widest">System Status</p>
                     <p class="text-xs text-green-400 flex items-center justify-end gap-1 font-bold">
-                        <span class="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse"></span> FULLY OPERATIONAL
+                        <span class="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse"></span> OPERATIONAL
                     </p>
                 </div>
-                <div
-                    class="h-12 w-12 rounded-2xl glass-panel flex items-center justify-center text-brand-primary text-xl">
-                    <i class="fa-solid fa-headset"></i>
-                </div>
+
+                <!-- NEW: Integrated QR Verify Header Button -->
+                <button onclick="showPanel('qrverify')"
+                    class="h-11 px-4 rounded-2xl bg-brand-primary/10 border border-brand-primary/30 text-brand-primary flex items-center gap-2 hover:bg-brand-primary hover:text-brand-dark transition-all duration-300 group shadow-lg shadow-cyan-500/10">
+                    <i class="fa-solid fa-qrcode text-lg group-hover:rotate-12 transition-transform"></i>
+                    <span class="text-sm font-bold uppercase tracking-wider hidden md:block">QR Verify</span>
+                </button>
+
+                <!-- NEW: Impressive Logout Button -->
+                <button onclick="logout()"
+                    class="h-11 px-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center gap-2 hover:bg-red-500 hover:text-white transition-all duration-300 group shadow-lg shadow-red-500/10">
+                    <i class="fa-solid fa-power-off text-lg group-hover:scale-110 transition-transform"></i>
+                    <span class="text-sm font-bold uppercase tracking-wider hidden md:block">Logout</span>
+                </button>
             </div>
         </header>
 
         <!-- DASHBOARD PANEL -->
         <div id="panel-dashboard" class="panel-view space-y-8">
             <!-- Stats -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div class="stat-card p-6 rounded-3xl">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+                <div class="stat-card p-6 rounded-3xl cursor-pointer hover:scale-[1.02] transition-all hover:bg-white/5 active:scale-95 shadow-xl shadow-black/10"
+                    onclick="showPanel('bookings')">
                     <div class="flex justify-between items-start mb-4">
                         <div
                             class="h-10 w-10 bg-brand-primary/10 rounded-xl flex items-center justify-center text-brand-primary">
@@ -244,7 +358,8 @@
                     <p class="text-slate-500 text-sm font-medium">Total Revenue</p>
                     <h3 class="text-2xl font-bold mt-1" id="stat-revenue">₹0</h3>
                 </div>
-                <div class="stat-card p-6 rounded-3xl">
+                <div class="stat-card p-6 rounded-3xl cursor-pointer hover:scale-[1.02] transition-all hover:bg-white/5 active:scale-95 shadow-xl shadow-black/10"
+                    onclick="showPanel('bookings')">
                     <div class="flex justify-between items-start mb-4">
                         <div
                             class="h-10 w-10 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-400">
@@ -256,17 +371,19 @@
                     <p class="text-slate-500 text-sm font-medium">Active Bookings</p>
                     <h3 class="text-2xl font-bold mt-1" id="stat-bookings">0</h3>
                 </div>
-                <div class="stat-card p-6 rounded-3xl">
+                <div class="stat-card p-6 rounded-3xl cursor-pointer hover:scale-[1.02] transition-all hover:bg-white/5 active:scale-95 shadow-xl shadow-black/10"
+                    onclick="showPanel('bookings')">
                     <div class="flex justify-between items-start mb-4">
                         <div
                             class="h-10 w-10 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-400">
-                            <i class="fa-solid fa-gem"></i>
+                            <i class="fa-solid fa-clock"></i>
                         </div>
                     </div>
-                    <p class="text-slate-500 text-sm font-medium">Active Members</p>
-                    <h3 class="text-2xl font-bold mt-1" id="stat-subs">0</h3>
+                    <p class="text-slate-500 text-sm font-medium">Upcoming Appointments</p>
+                    <h3 class="text-2xl font-bold mt-1" id="stat-upcoming">0</h3>
                 </div>
-                <div class="stat-card p-6 rounded-3xl">
+                <div class="stat-card p-6 rounded-3xl cursor-pointer hover:scale-[1.02] transition-all hover:bg-white/5 active:scale-95 shadow-xl shadow-black/10"
+                    onclick="showPanel('users')">
                     <div class="flex justify-between items-start mb-4">
                         <div class="h-10 w-10 bg-pink-500/10 rounded-xl flex items-center justify-center text-pink-400">
                             <i class="fa-solid fa-users"></i>
@@ -275,6 +392,21 @@
                     <p class="text-slate-500 text-sm font-medium">Total Customers</p>
                     <h3 class="text-2xl font-bold mt-1" id="stat-users">0</h3>
                 </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <button onclick="openWalkInModal()"
+                    class="p-6 rounded-3xl glass-panel border border-brand-primary/20 flex items-center gap-4 hover:bg-brand-primary/5 transition-all group">
+                    <div
+                        class="h-12 w-12 rounded-2xl bg-brand-primary/10 flex items-center justify-center text-brand-primary group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-car-side text-xl"></i>
+                    </div>
+                    <div class="text-left">
+                        <h4 class="font-bold text-white">Direct Walk-in</h4>
+                        <p class="text-xs text-slate-500">Vehicle directly at station</p>
+                    </div>
+                </button>
             </div>
 
             <div class="grid lg:grid-cols-3 gap-8">
@@ -409,16 +541,357 @@
             </div>
         </div>
 
-        <!-- STATIONS PANEL -->
-        <div id="panel-stations" class="panel-view hidden">
-            <div class="grid md:grid-cols-2 gap-8">
-                <!-- Stationary management simplified -->
-                <div class="glass-panel p-8 text-center py-20">
-                    <i class="fa-solid fa-wrench text-6xl text-slate-700 mb-6"></i>
-                    <h3 class="text-2xl font-bold mb-2">Station Management</h3>
-                    <p class="text-slate-500">Advanced multi-station control is under maintenance.</p>
+
+        <!-- QR VERIFY PANEL -->
+        <div id="panel-qrverify" class="panel-view hidden space-y-8">
+            <div class="grid lg:grid-cols-2 gap-8">
+                <!-- Scan Section -->
+                <div class="glass-panel p-8 flex flex-col items-center justify-center min-h-[400px]">
+                    <div class="w-full max-w-sm">
+                        <h3 class="text-2xl font-bold mb-6 text-center">Scan QR Code</h3>
+                        <div id="reader"
+                            class="rounded-2xl overflow-hidden border-2 border-brand-primary/20 bg-black/40 mb-6"></div>
+                        <div class="flex gap-4">
+                            <button onclick="startScanner()"
+                                class="flex-1 btn-gradient py-3 rounded-xl text-brand-dark font-bold">START
+                                CAMERA</button>
+                            <button onclick="stopScanner()"
+                                class="flex-1 bg-white/5 py-3 rounded-xl font-bold border border-white/10">STOP</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Manual / Upload Section -->
+                <div class="glass-panel p-8">
+                    <h3 class="text-2xl font-bold mb-6">Verification Methods</h3>
+
+                    <div class="space-y-6">
+                        <!-- File Upload -->
+                        <div class="p-6 rounded-2xl border-2 border-dashed border-white/10 hover:border-brand-primary/40 transition-all bg-white/5 text-center cursor-pointer relative group"
+                            onclick="document.getElementById('qr-upload').click()">
+                            <i
+                                class="fa-solid fa-file-arrow-up text-4xl text-slate-500 mb-4 group-hover:text-brand-primary transition-all"></i>
+                            <p class="text-slate-400 font-medium">Click to upload QR code image</p>
+                            <p class="text-[10px] text-slate-500 mt-2 uppercase tracking-widest">Supports PNG, JPG</p>
+                            <input type="file" id="qr-upload" class="hidden" accept="image/*"
+                                onchange="handleQRUpload(this)">
+                        </div>
+
+                        <div class="relative flex items-center">
+                            <div class="flex-grow border-t border-white/5"></div>
+                            <span
+                                class="flex-shrink mx-4 text-slate-600 text-xs font-bold uppercase tracking-widest">OR</span>
+                            <div class="flex-grow border-t border-white/5"></div>
+                        </div>
+
+                        <!-- Booking ID Input -->
+                        <div class="space-y-4">
+                            <label class="text-xs font-bold text-slate-500 uppercase tracking-widest pl-1">Booking
+                                ID</label>
+                            <div class="flex gap-3">
+                                <input type="text" id="manual-booking-id" placeholder="Enter ID (e.g. 1024)"
+                                    class="flex-1 bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-brand-primary transition-all font-mono">
+                                <button onclick="verifyById()"
+                                    class="btn-gradient px-8 rounded-2xl text-brand-dark font-bold">VERIFY</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
+
+        </div>
+        </div>
+
+        <!-- PICKUP MANAGEMENT PANEL -->
+        <div id="panel-pickup" class="panel-view hidden">
+            <div class="space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-2xl font-bold flex items-center gap-3">
+                            <i class="fa-solid fa-truck-pickup text-brand-primary"></i>
+                            Pickup Requests
+                        </h2>
+                        <p class="text-slate-500 text-sm mt-1">Approve requests to send customer phone number via email
+                            to staff</p>
+                    </div>
+                    <button onclick="loadPickups()"
+                        class="btn-gradient px-6 py-2 rounded-xl text-brand-dark font-bold text-sm flex items-center gap-2">
+                        <i class="fa-solid fa-rotate-right"></i> Refresh
+                    </button>
+                </div>
+
+                <!-- Stats -->
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="glass-panel p-4 rounded-2xl flex items-center gap-3">
+                        <div
+                            class="h-10 w-10 bg-yellow-500/10 rounded-xl flex items-center justify-center text-yellow-400">
+                            <i class="fa-solid fa-clock"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-500 uppercase font-bold">Pending</p>
+                            <p class="text-xl font-bold" id="pickup-stat-pending">-</p>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-2xl flex items-center gap-3">
+                        <div
+                            class="h-10 w-10 bg-green-500/10 rounded-xl flex items-center justify-center text-green-400">
+                            <i class="fa-solid fa-check-circle"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-500 uppercase font-bold">Approved</p>
+                            <p class="text-xl font-bold" id="pickup-stat-approved">-</p>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-2xl flex items-center gap-3">
+                        <div
+                            class="h-10 w-10 bg-brand-primary/10 rounded-xl flex items-center justify-center text-brand-primary">
+                            <i class="fa-solid fa-list"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-500 uppercase font-bold">Total</p>
+                            <p class="text-xl font-bold" id="pickup-stat-total">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="border-b border-white/5">
+                                    <th
+                                        class="text-left py-4 pl-6 text-xs font-bold text-slate-500 uppercase tracking-widest">
+                                        ID</th>
+                                    <th
+                                        class="text-left py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">
+                                        Customer</th>
+                                    <th
+                                        class="text-left py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">
+                                        Phone</th>
+                                    <th
+                                        class="text-left py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">
+                                        Location</th>
+                                    <th
+                                        class="text-left py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">
+                                        Requested</th>
+                                    <th
+                                        class="text-left py-4 text-xs font-bold text-slate-500 uppercase tracking-widest">
+                                        Status</th>
+                                    <th
+                                        class="text-left py-4 pr-6 text-xs font-bold text-slate-500 uppercase tracking-widest">
+                                        Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pickups-list">
+                                <tr>
+                                    <td colspan="7" class="py-12 text-center text-slate-500 italic">Loading pickups...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Approval Notification -->
+                <div id="pickup-approve-msg"
+                    class="hidden p-4 rounded-2xl bg-green-500/10 border border-green-400/20 text-green-400 font-medium text-sm flex items-center gap-3">
+                    <i class="fa-solid fa-circle-check text-xl"></i>
+                    <span id="pickup-approve-text">✅ Approved! Customer phone number has been sent to staff
+                        email.</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- STAFF MANAGEMENT PANEL -->
+        <div id="panel-staff" class="panel-view hidden space-y-6">
+            <div class="grid lg:grid-cols-3 gap-8">
+                <!-- Register Section -->
+                <div class="lg:col-span-1 glass-panel p-8">
+                    <h2 class="text-2xl font-bold mb-6">Register Staff</h2>
+                    <form id="staff-reg-form" class="space-y-4">
+                        <div class="space-y-2">
+                            <label class="text-[10px] uppercase font-bold text-slate-500">Full Name</label>
+                            <input type="text" name="fullname" required
+                                class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-brand-primary text-sm">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] uppercase font-bold text-slate-500">Phone</label>
+                            <input type="text" name="phone" required
+                                class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-brand-primary text-sm">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] uppercase font-bold text-slate-500">Email</label>
+                            <input type="email" name="email" required
+                                class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-brand-primary text-sm">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-[10px] uppercase font-bold text-slate-500">Password</label>
+                            <div class="relative">
+                                <input type="password" name="password" id="staff-pass" required
+                                    class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-brand-primary text-sm pr-12">
+                                <button type="button" onclick="togglePassword('staff-pass', 'staff-pass-icon')"
+                                    class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-brand-primary transition-colors">
+                                    <i id="staff-pass-icon" class="fa-solid fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="submit"
+                            class="w-full btn-gradient py-4 rounded-2xl text-brand-dark font-bold shadow-lg shadow-cyan-500/20">CREATE
+                            ACCOUNT</button>
+                    </form>
+                </div>
+
+                <!-- Staff List Section -->
+                <div class="lg:col-span-2 glass-panel p-8">
+                    <div class="flex items-center justify-between mb-8">
+                        <div>
+                            <h2 class="text-2xl font-bold">Staff Roster</h2>
+                            <p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-1">
+                                <span id="staff-present-count" class="text-green-400">0</span> / <span
+                                    id="staff-total-count">0</span> Present Today
+                            </p>
+                        </div>
+                        <button onclick="loadStaffList()"
+                            class="h-10 w-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-brand-primary/10 hover:text-brand-primary transition-all">
+                            <i class="fa-solid fa-rotate-right"></i>
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="text-xs text-slate-500 uppercase tracking-widest border-b border-white/5">
+                                <tr>
+                                    <th class="pb-4 font-bold">Name</th>
+                                    <th class="pb-4 font-bold">Today's Attendance</th>
+                                    <th class="pb-4 font-bold">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="staff-list-body" class="text-sm">
+                                <!-- Populated via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LIVE SHOP STATUS PANEL -->
+        <div id="panel-status" class="panel-view hidden">
+            <div class="max-w-4xl mx-auto space-y-8">
+                <div class="grid md:grid-cols-2 gap-8">
+                    <!-- Current Status Info -->
+                    <div class="glass-panel p-8 bg-gradient-to-br from-brand-primary/5 to-transparent">
+                        <h3 class="text-xl font-bold mb-6 flex items-center gap-2">
+                            <i class="fa-solid fa-satellite-dish text-brand-primary animate-pulse"></i>
+                            Active Status
+                        </h3>
+                        <div id="status-display-card"
+                            class="text-center py-6 rounded-2xl bg-black/20 border border-white/5 mb-6">
+                            <span id="live-status-badge"
+                                class="px-6 py-2 rounded-full font-bold text-lg mb-4 inline-block">LOADING...</span>
+                            <h4 id="live-status-msg" class="text-slate-400 font-medium">Fetching details...</h4>
+                        </div>
+                        <div class="space-y-4 text-sm">
+                            <div class="flex justify-between border-b border-white/5 pb-2">
+                                <span class="text-slate-500">Last Updated</span>
+                                <span id="status-updated-at" class="text-slate-300 font-mono">-</span>
+                            </div>
+                            <div class="flex justify-between border-b border-white/5 pb-2">
+                                <span class="text-slate-500">Updated By</span>
+                                <span id="status-updated-by" class="text-slate-300">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Status Update Form -->
+                    <div class="glass-panel p-8">
+                        <h3 class="text-xl font-bold mb-6">Update Settings</h3>
+                        <div class="space-y-6">
+                            <div class="space-y-2">
+                                <label class="text-xs font-bold text-slate-500 uppercase pl-1">Global Status</label>
+                                <select id="input-status"
+                                    class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-brand-primary appearance-none">
+                                    <option value="OPEN">🟢 OPEN — Accepting all customers</option>
+                                    <option value="BUSY">🟡 BUSY — Washing in progress</option>
+                                    <option value="FULLY BOOKED">🟠 FULLY BOOKED — No slots available</option>
+                                    <option value="CLOSED">🔴 CLOSED — Shop is closed</option>
+                                    <option value="MAINTENANCE">🔧 MAINTENANCE — Under maintenance</option>
+                                    <option value="EMERGENCY MAINTENANCE">⚠️ EMERGENCY MAINTENANCE — Critical shutdown
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-xs font-bold text-slate-500 uppercase pl-1">Custom Message</label>
+                                <input type="text" id="input-message" placeholder="e.g. High volume, expect wait"
+                                    class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-brand-primary">
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="space-y-2">
+                                    <label class="text-xs font-bold text-slate-500 uppercase pl-1">Cars in Queue</label>
+                                    <input type="number" id="input-queue" value="0"
+                                        class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-brand-primary">
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="text-xs font-bold text-slate-500 uppercase pl-1">Wait (Mins)</label>
+                                    <input type="number" id="input-wait" value="15"
+                                        class="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-brand-primary">
+                                </div>
+                            </div>
+                            <div
+                                class="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/10">
+                                <span class="font-medium">Pickup Service Active</span>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="input-pickup" class="sr-only peer" checked>
+                                    <div
+                                        class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-primary">
+                                    </div>
+                                </label>
+                            </div>
+                            <button onclick="updateFullStatus()"
+                                class="w-full btn-gradient py-4 rounded-2xl text-brand-dark font-bold">PUBLISH LIVE
+                                UPDATE</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="verify-result"
+            class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md">
+            <div class="glass-panel p-8 max-w-md w-full mx-4 border-brand-primary/30">
+                <div class="text-center">
+                    <div id="verify-icon"
+                        class="h-16 w-16 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                        <i class="fa-solid fa-check-double"></i>
+                    </div>
+                    <h4 id="verify-title" class="text-xl font-bold mb-2 text-white">Booking Verified!</h4>
+                    <p id="verify-msg" class="text-slate-400 text-sm mb-4"></p>
+
+                    <!-- Pickup post-scan action (shown only for pickup QR) -->
+                    <div id="verify-pickup-action"
+                        class="hidden mb-5 p-4 rounded-2xl bg-white/5 border border-white/10">
+                        <p class="text-xs text-slate-500 uppercase font-bold mb-3">Update Pickup Status</p>
+                        <div class="flex gap-2">
+                            <select id="verify-pickup-status-select"
+                                class="flex-1 bg-slate-800 border border-white/10 text-sm p-2.5 rounded-xl outline-none focus:border-brand-primary appearance-none">
+                                <option value="Confirmed">✅ Confirmed</option>
+                                <option value="Picked">🚗 Picked</option>
+                                <option value="Washing">🫧 Washing</option>
+                                <option value="Drying">💨 Drying</option>
+                                <option value="Delivered">🎉 Delivered</option>
+                                <option value="Cancelled">❌ Cancelled</option>
+                            </select>
+                            <button onclick="applyVerifyPickupStatus()" id="verify-pickup-apply-btn"
+                                class="px-4 py-2 rounded-xl bg-brand-primary text-brand-dark text-xs font-bold hover:brightness-110 transition whitespace-nowrap">
+                                <i class="fa-solid fa-arrow-right"></i> Apply
+                            </button>
+                        </div>
+                    </div>
+
+                    <button onclick="document.getElementById('verify-result').classList.add('hidden')"
+                        class="w-full btn-gradient py-3 rounded-xl text-brand-dark font-bold">OK, PROCEED</button>
+                </div>
+            </div>
+        </div>
         </div>
     </main>
 
@@ -431,10 +904,28 @@
             checkAuth();
             loadAnalytics();
             loadRecentBookings();
+            // Load pickups to show badge count
+            loadPickups();
 
             // Auto refresh stats every minute
             setInterval(loadAnalytics, 60000);
+            // Auto refresh pickup badge every 30s
+            setInterval(() => { if (currentActivePanel !== 'pickup') loadPickupBadge(); }, 30000);
         });
+
+        // Just refresh the badge without re-rendering the full table
+        async function loadPickupBadge() {
+            try {
+                const res = await fetch('/api/admin/pickup/pending');
+                const pickups = await res.json();
+                const pending = pickups.filter(p => p.status === 'Pending').length;
+                const badge = document.getElementById('pickup-badge');
+                if (badge) {
+                    badge.textContent = pending;
+                    badge.classList.toggle('hidden', pending === 0);
+                }
+            } catch (e) { }
+        }
 
         async function checkAuth() {
             try {
@@ -457,7 +948,9 @@
                 document.getElementById('stat-revenue').textContent = `₹${Math.floor(data.revenue).toLocaleString()}`;
                 document.getElementById('stat-bookings').textContent = data.total_bookings;
                 document.getElementById('stat-users').textContent = data.total_users;
-                document.getElementById('stat-subs').textContent = data.active_subscriptions;
+                if (document.getElementById('stat-upcoming')) {
+                    document.getElementById('stat-upcoming').textContent = data.upcoming_appointments || 0;
+                }
             } catch (e) {
                 console.error("Analytics load failed");
             }
@@ -487,7 +980,14 @@
                             <span class="status-badge status-${b.status.toLowerCase()}">${b.status}</span>
                         </td>
                         <td class="py-4">
-                            <button onclick="quickUpdateStatus(${b.id}, 'Washing')" class="text-brand-primary hover:text-white transition"><i class="fa-solid fa-play"></i></button>
+                            <select onchange="updateBookingStatus(${b.id}, this.value)" class="bg-slate-800 border border-white/10 text-[10px] p-1.5 rounded-xl outline-none focus:border-brand-primary text-slate-300">
+                                <option value="" disabled selected>Action</option>
+                                <option value="Approved">Approve</option>
+                                <option value="Washing">Wash</option>
+                                <option value="Drying">Dry</option>
+                                <option value="Completed">Finish</option>
+                                <option value="Cancelled">Cancel</option>
+                            </select>
                         </td>
                     `;
                     list.appendChild(tr);
@@ -621,6 +1121,11 @@
         }
 
         function showPanel(panel) {
+            // Stop scanner if leaving qrverify
+            if (currentActivePanel === 'qrverify' && panel !== 'qrverify') {
+                stopScanner();
+            }
+
             // Hide all
             document.querySelectorAll('.panel-view').forEach(p => p.classList.add('hidden'));
             document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
@@ -635,17 +1140,717 @@
 
             if (panel === 'bookings') loadBookingsList();
             if (panel === 'users') loadUsersList();
+            if (panel === 'staff') loadStaffList();
+            if (panel === 'status') loadShopStatusAdmin();
+            if (panel === 'pickup') loadPickups();
             if (panel === 'dashboard') {
                 loadAnalytics();
                 loadRecentBookings();
             }
         }
 
+        function togglePassword(inputId, iconId) {
+            const input = document.getElementById(inputId);
+            const icon = document.getElementById(iconId);
+            if (input.type === "password") {
+                input.type = "text";
+                icon.classList.remove("fa-eye");
+                icon.classList.add("fa-eye-slash");
+            } else {
+                input.type = "password";
+                icon.classList.remove("fa-eye-slash");
+                icon.classList.add("fa-eye");
+            }
+        }
+
+        async function loadStaffList() {
+            try {
+                const res = await fetch('/api/admin/staff');
+                const staff = await res.json();
+                const container = document.getElementById('staff-list-body');
+                container.innerHTML = '';
+
+                // Update counts
+                const total = staff.length;
+                const present = staff.filter(s => s.today_status === 'Present').length;
+                if (document.getElementById('staff-total-count')) document.getElementById('staff-total-count').textContent = total;
+                if (document.getElementById('staff-present-count')) document.getElementById('staff-present-count').textContent = present;
+
+                container.innerHTML = '';
+
+                staff.forEach(s => {
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b border-white/5 hover:bg-white/5 transition-all";
+
+                    const statusClass = s.today_status === 'Present' ? 'bg-green-500/20 text-green-400' : (s.today_status === 'Absent' ? 'bg-red-500/20 text-red-500' : 'bg-slate-500/20 text-slate-400');
+
+                    tr.innerHTML = `
+                        <td class="py-4 font-bold text-slate-200">
+                            <div>${s.fullname}</div>
+                            <div class="text-[10px] text-slate-500 font-mono tracking-tight">${s.phone}</div>
+                        </td>
+                        <td class="py-4">
+                            <div class="flex items-center gap-2">
+                                <span class="px-3 py-1 rounded-full text-[10px] font-bold uppercase ${statusClass}">${s.today_status}</span>
+                                <div class="flex gap-1">
+                                    <button onclick="markAttendance(${s.id}, 'Present')" class="h-6 w-6 rounded bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white transition-all"><i class="fa-solid fa-check text-[10px]"></i></button>
+                                    <button onclick="markAttendance(${s.id}, 'Absent')" class="h-6 w-6 rounded bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all"><i class="fa-solid fa-xmark text-[10px]"></i></button>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="py-4">
+                            <button onclick="viewStaffDetails(${s.id})" class="text-brand-primary text-xs font-bold uppercase hover:underline">Full Details</button>
+                        </td>
+                    `;
+                    container.appendChild(tr);
+                });
+            } catch (e) {
+                console.error("Staff load failed", e);
+            }
+        }
+
+        async function markAttendance(staffId, status) {
+            try {
+                const res = await fetch('/api/admin/staff/attendance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ staff_id: staffId, status: status })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    loadStaffList();
+                }
+            } catch (e) { alert("Failed to mark attendance"); }
+        }
+
+        async function viewStaffDetails(staffId) {
+            try {
+                const res = await fetch(`/api/admin/staff/${staffId}`);
+                const s = await res.json();
+
+                const modal = document.getElementById('staff-details-modal');
+                modal.classList.remove('hidden');
+
+                document.getElementById('sd-name').textContent = s.fullname;
+                document.getElementById('sd-email').textContent = s.email;
+                document.getElementById('sd-phone').textContent = s.phone;
+                document.getElementById('sd-joined').textContent = new Date(s.created_at).toLocaleDateString();
+
+                const attList = document.getElementById('sd-attendance-list');
+                attList.innerHTML = '';
+                s.attendance_history.slice(0, 7).forEach(a => {
+                    const li = document.createElement('div');
+                    li.className = "flex justify-between items-center p-2 rounded bg-white/5 border border-white/5 text-xs";
+                    li.innerHTML = `<span class="text-slate-500">${a.date}</span> <span class="font-bold ${a.status === 'Present' ? 'text-green-400' : 'text-red-400'}">${a.status}</span>`;
+                    attList.appendChild(li);
+                });
+
+                const jobsList = document.getElementById('sd-jobs-list');
+                jobsList.innerHTML = '';
+                s.recent_jobs.forEach(j => {
+                    const li = document.createElement('div');
+                    li.className = "p-3 rounded bg-white/5 border border-white/5 text-xs";
+                    li.innerHTML = `
+                        <div class="flex justify-between font-bold mb-1"><span>${j.customer_name}</span> <span class="text-brand-primary">${j.vehicle_number}</span></div>
+                        <div class="flex justify-between text-[10px] text-slate-500"><span>${j.appointment_date}</span> <span>${j.status}</span></div>
+                    `;
+                    jobsList.appendChild(li);
+                });
+            } catch (e) { alert("Failed to load details"); }
+        }
+
+        async function loadShopStatusAdmin() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+
+                // Update Badge
+                const badge = document.getElementById('live-status-badge');
+                badge.textContent = data.status || 'OPEN';
+
+                // Colors
+                const colors = {
+                    'OPEN': 'bg-green-500/20 text-green-400 border border-green-400/20',
+                    'BUSY': 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/20',
+                    'FULLY BOOKED': 'bg-orange-500/20 text-orange-500 border border-orange-500/20',
+                    'CLOSED': 'bg-red-500/20 text-red-400 border border-red-400/20',
+                    'MAINTENANCE': 'bg-amber-500/20 text-amber-400 border border-amber-400/20 animate-pulse',
+                    'EMERGENCY MAINTENANCE': 'bg-red-500 text-white animate-pulse border border-red-300/30'
+                };
+                badge.className = `px-6 py-2 rounded-full font-bold text-lg mb-4 inline-block ${colors[data.status] || colors['OPEN']}`;
+
+                document.getElementById('live-status-msg').textContent = data.message || 'Operational';
+                document.getElementById('status-updated-at').textContent = data.updated_at ? new Date(data.updated_at).toLocaleString() : 'Just now';
+                document.getElementById('status-updated-by').textContent = data.updated_by || 'Admin';
+
+                // Populate inputs
+                document.getElementById('input-status').value = data.status || 'OPEN';
+                document.getElementById('input-message').value = data.message || '';
+                document.getElementById('input-queue').value = data.queue_count || 0;
+                document.getElementById('input-wait').value = data.wait_time || 0;
+                document.getElementById('input-pickup').checked = data.pickup_active !== false;
+            } catch (e) {
+                console.error("Status load failed", e);
+            }
+        }
+
+        async function updateFullStatus() {
+            const data = {
+                status: document.getElementById('input-status').value,
+                message: document.getElementById('input-message').value,
+                queue_count: parseInt(document.getElementById('input-queue').value) || 0,
+                wait_time: parseInt(document.getElementById('input-wait').value) || 0,
+                pickup_active: document.getElementById('input-pickup').checked
+            };
+
+            const btn = document.querySelector('[onclick="updateFullStatus()"]');
+            const origText = btn ? btn.textContent : '';
+            if (btn) { btn.textContent = 'Publishing...'; btn.disabled = true; }
+
+            try {
+                const res = await fetch('/api/admin/status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+                if (result.success) {
+                    // Show inline success notification
+                    const successEl = document.createElement('div');
+                    successEl.className = 'fixed top-6 right-6 z-50 bg-green-500 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 font-bold animate-fade-in-up';
+                    successEl.innerHTML = '<i class="fa-solid fa-satellite-dish"></i> Live status published successfully!';
+                    document.body.appendChild(successEl);
+                    setTimeout(() => successEl.remove(), 3000);
+                    loadShopStatusAdmin();
+                } else {
+                    alert('Failed: ' + result.message);
+                }
+            } catch (e) { alert("Failed to publish update"); }
+            finally {
+                if (btn) { btn.textContent = origText; btn.disabled = false; }
+            }
+        }
+
+        // ============================================================
+        // PICKUP MANAGEMENT FUNCTIONS
+        // ============================================================
+        async function loadPickups() {
+            const list = document.getElementById('pickups-list');
+            list.innerHTML = '<tr><td colspan="7" class="py-12 text-center"><i class="fa-solid fa-spinner fa-spin text-brand-primary text-xl"></i></td></tr>';
+
+            try {
+                const res = await fetch('/api/admin/pickup/pending');
+                const pickups = await res.json();
+
+                list.innerHTML = '';
+
+                // Update stats
+                const pending = pickups.filter(p => p.status === 'Pending').length;
+                const approved = pickups.filter(p => p.status === 'Confirmed').length;
+                const pendingStat = document.getElementById('pickup-stat-pending');
+                const approvedStat = document.getElementById('pickup-stat-approved');
+                const totalStat = document.getElementById('pickup-stat-total');
+                if (pendingStat) pendingStat.textContent = pending;
+                if (approvedStat) approvedStat.textContent = approved;
+                if (totalStat) totalStat.textContent = pickups.length;
+
+                // Update sidebar badge
+                const badge = document.getElementById('pickup-badge');
+                if (badge) {
+                    if (pending > 0) {
+                        badge.textContent = pending;
+                        badge.classList.remove('hidden');
+                    } else {
+                        badge.classList.add('hidden');
+                    }
+                }
+
+                if (pickups.length === 0) {
+                    list.innerHTML = `<tr><td colspan="7" class="py-16 text-center">
+                        <i class="fa-solid fa-truck-pickup text-4xl text-slate-700 mb-3 block"></i>
+                        <p class="text-slate-500 italic">No pickup requests yet</p>
+                    </td></tr>`;
+                    return;
+                }
+
+                pickups.forEach(p => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-b border-white/5 hover:bg-white/3 transition-all';
+
+                    const mapsLink = p.location && p.location.includes(',')
+                        ? `https://www.google.com/maps?q=${p.location}`
+                        : null;
+
+                    const statusMap = {
+                        'Pending': { cls: 'bg-yellow-500/20 text-yellow-400 border border-yellow-400/20', icon: 'fa-clock' },
+                        'Confirmed': { cls: 'bg-green-500/20 text-green-400 border border-green-400/20', icon: 'fa-check-circle' },
+                        'Picked': { cls: 'bg-blue-500/20 text-blue-400 border border-blue-400/20', icon: 'fa-car' },
+                        'Washing': { cls: 'bg-cyan-500/20 text-cyan-400 border border-cyan-400/20', icon: 'fa-droplet' },
+                        'Drying': { cls: 'bg-purple-500/20 text-purple-400 border border-purple-400/20', icon: 'fa-wind' },
+                        'Delivered': { cls: 'bg-emerald-500/20 text-emerald-400 border border-emerald-400/20', icon: 'fa-circle-check' },
+                        'Cancelled': { cls: 'bg-red-500/20 text-red-400 border border-red-400/20', icon: 'fa-times-circle' },
+                    };
+                    const sBadge = statusMap[p.status] || statusMap['Pending'];
+
+                    const timeStr = p.created_at ? new Date(p.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'N/A';
+
+                    // Build options for dropdown — mark current as selected
+                    const allStatuses = ['Pending', 'Confirmed', 'Picked', 'Washing', 'Drying', 'Delivered', 'Cancelled'];
+                    const statusIcons = { Pending: '⏳', Confirmed: '✅', Picked: '🚗', Washing: '🫧', Drying: '💨', Delivered: '🎉', Cancelled: '❌' };
+                    const optionsHTML = allStatuses.map(s =>
+                        `<option value="${s}" ${s === p.status ? 'selected' : ''}>${statusIcons[s]} ${s}</option>`
+                    ).join('');
+
+                    tr.innerHTML = `
+                        <td class="py-4 pl-6 font-mono text-xs text-slate-500">#${String(p.id).padStart(4, '0')}</td>
+                        <td class="py-4">
+                            <div class="font-bold text-sm">${p.customer_name || 'Unknown'}</div>
+                        </td>
+                        <td class="py-4">
+                            <a href="tel:${p.phone}" class="flex items-center gap-1.5 text-brand-primary hover:text-white transition font-mono text-sm font-bold">
+                                <i class="fa-solid fa-phone text-xs"></i> ${p.phone || 'N/A'}
+                            </a>
+                        </td>
+                        <td class="py-4">
+                            ${mapsLink
+                            ? `<a href="${mapsLink}" target="_blank" class="flex items-center gap-1.5 text-brand-primary hover:text-white transition text-xs font-bold">
+                                    <i class="fa-solid fa-location-dot"></i> View on Maps
+                                  </a>`
+                            : `<span class="text-slate-600 text-xs">No location</span>`
+                        }
+                        </td>
+                        <td class="py-4 text-xs text-slate-400 font-mono">${timeStr}</td>
+                        <td class="py-4">
+                            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${sBadge.cls}">
+                                <i class="fa-solid ${sBadge.icon}"></i> ${p.status}
+                            </span>
+                        </td>
+                        <td class="py-4 pr-6">
+                            <div class="flex items-center gap-2">
+                                <select id="pickup-action-${p.id}"
+                                    class="bg-slate-800 border border-white/10 text-xs p-2 rounded-xl outline-none focus:border-brand-primary appearance-none cursor-pointer"
+                                    style="min-width:130px">
+                                    ${optionsHTML}
+                                </select>
+                                <button onclick="updatePickupStatus(${p.id}, this)"
+                                    class="px-3 py-2 rounded-xl bg-brand-primary text-brand-dark text-xs font-bold hover:brightness-110 transition flex items-center gap-1.5 whitespace-nowrap shadow-md shadow-brand-primary/20">
+                                    <i class="fa-solid fa-arrow-right"></i> Apply
+                                </button>
+                            </div>
+                        </td>
+                    `;
+                    list.appendChild(tr);
+                });
+            } catch (e) {
+                list.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-red-400 italic">Failed to load pickups. Please refresh.</td></tr>';
+                console.error('Pickup load error:', e);
+            }
+        }
+
+        async function updatePickupStatus(bookingId, btn) {
+            const select = document.getElementById(`pickup-action-${bookingId}`);
+            const newStatus = select ? select.value : null;
+            if (!newStatus) return;
+
+            const origHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            btn.disabled = true;
+            if (select) select.disabled = true;
+
+            try {
+                const res = await fetch(`/api/admin/pickup/update/${bookingId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    const msgEl = document.getElementById('pickup-approve-msg');
+                    const textEl = document.getElementById('pickup-approve-text');
+                    if (msgEl && textEl) {
+                        const icons = { Confirmed: '✅', Picked: '🚗', Washing: '🫧', Drying: '💨', Delivered: '🎉', Cancelled: '❌', Pending: '⏳' };
+                        const emailNote = newStatus === 'Confirmed' ? ' Staff has been notified by email.' : '';
+                        textEl.textContent = `${icons[newStatus] || '✅'} Pickup #${String(bookingId).padStart(4, '0')} → ${newStatus}.${emailNote}`;
+                        msgEl.classList.remove('hidden');
+                        setTimeout(() => msgEl.classList.add('hidden'), 5000);
+                    }
+                    loadPickups();
+                } else {
+                    alert('Update failed: ' + (data.message || 'Unknown error'));
+                    btn.innerHTML = origHTML;
+                    btn.disabled = false;
+                    if (select) select.disabled = false;
+                }
+            } catch (e) {
+                alert('Network error. Please try again.');
+                btn.innerHTML = origHTML;
+                btn.disabled = false;
+                if (select) select.disabled = false;
+            }
+        }
+
+        // Backward compat — still works if called from old buttons
+        async function approvePickup(bookingId, btn) {
+            await updatePickupStatus(bookingId, btn || document.getElementById(`approve-btn-${bookingId}`));
+        }
+
+
+        document.getElementById('staff-reg-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                const res = await fetch('/api/admin/register-staff', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+                if (result.success) {
+                    alert(result.message);
+                    e.target.reset();
+                } else {
+                    alert("Error: " + result.message);
+                }
+            } catch (err) { alert("Registration failed"); }
+        });
+
         async function logout() {
             await fetch('/api/logout', { method: 'POST' });
             window.location.href = '/index.html';
         }
+
+        // QR SCANNER LOGIC
+        let html5QrCode = null;
+
+        function startScanner() {
+            const readerDiv = document.getElementById('reader');
+            if (!readerDiv) return;
+
+            // Stop existing
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().then(() => startScanner());
+                return;
+            }
+
+            html5QrCode = new Html5Qrcode("reader");
+            const config = {
+                fps: 20,
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0
+            };
+
+            // Show loading state
+            readerDiv.innerHTML = '<div class="flex items-center justify-center h-64 text-brand-primary"><i class="fa-solid fa-spinner fa-spin text-3xl"></i></div>';
+
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                (decodedText, decodedResult) => {
+                    console.log(`QR Matched: ${decodedText}`);
+                    // Visual feedback
+                    readerDiv.style.borderColor = "#10b981";
+                    setTimeout(() => { readerDiv.style.borderColor = ""; }, 500);
+
+                    stopScanner();
+                    verifyBooking(decodedText.trim());
+                }
+            ).catch(err => {
+                console.error("Camera Error:", err);
+                readerDiv.innerHTML = `<div class="p-8 text-center text-red-400 text-sm">
+                    <i class="fa-solid fa-triangle-exclamation text-2xl mb-2"></i><br>
+                    Camera access denied or not found.<br>
+                    Please use the "Upload" method below.
+                </div>`;
+            });
+        }
+
+        function stopScanner() {
+            if (html5QrCode) {
+                html5QrCode.stop().catch(err => console.log("Stop Error:", err));
+            }
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            // This is now handled inline in startScanner for better scope management
+        }
+
+        let _lastVerifiedPickupId = null; // track the last scanned pickup id for applyVerifyPickupStatus
+
+        async function verifyBooking(bookingId) {
+            try {
+                const res = await fetch('/api/admin/verify-booking', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: bookingId })
+                });
+                const data = await res.json();
+
+                const resultModal = document.getElementById('verify-result');
+                const title = document.getElementById('verify-title');
+                const msg = document.getElementById('verify-msg');
+                const icon = document.getElementById('verify-icon');
+                const pickupAction = document.getElementById('verify-pickup-action');
+                const pickupSelect = document.getElementById('verify-pickup-status-select');
+
+                const isPickup = String(bookingId).toUpperCase().startsWith('PICKUP-');
+
+                if (data.success) {
+                    if (isPickup) {
+                        // Pickup QR verified
+                        _lastVerifiedPickupId = String(bookingId).toUpperCase().replace('PICKUP-', '').trim();
+                        title.textContent = '🚗 Pickup Verified!';
+                        title.className = 'text-xl font-bold mb-2 text-cyan-400';
+                        icon.className = 'h-16 w-16 bg-cyan-500/20 text-cyan-400 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl';
+                        icon.innerHTML = '<i class="fa-solid fa-truck-pickup"></i>';
+                        if (pickupSelect) pickupSelect.value = 'Picked'; // pre-select the newly updated state
+                        if (pickupAction) pickupAction.classList.remove('hidden');
+                    } else {
+                        _lastVerifiedPickupId = null;
+                        title.textContent = 'Verified!';
+                        title.className = 'text-xl font-bold mb-2 text-green-400';
+                        icon.className = 'h-16 w-16 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl';
+                        icon.innerHTML = '<i class="fa-solid fa-check-double"></i>';
+                        if (pickupAction) pickupAction.classList.add('hidden');
+                    }
+                    msg.textContent = data.message;
+                } else {
+                    _lastVerifiedPickupId = null;
+                    title.textContent = 'Verification Failed';
+                    title.className = 'text-xl font-bold mb-2 text-red-400';
+                    msg.textContent = data.message;
+                    icon.className = 'h-16 w-16 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl';
+                    icon.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+                    if (pickupAction) pickupAction.classList.add('hidden');
+                }
+                resultModal.classList.remove('hidden');
+                loadRecentBookings();
+                if (currentActivePanel === 'pickup') loadPickups();
+            } catch (e) {
+                alert('Verification request failed');
+            }
+        }
+
+        async function applyVerifyPickupStatus() {
+            if (!_lastVerifiedPickupId) return;
+            const select = document.getElementById('verify-pickup-status-select');
+            const btn = document.getElementById('verify-pickup-apply-btn');
+            const newStatus = select ? select.value : null;
+            if (!newStatus) return;
+
+            const origHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`/api/admin/pickup/update/${_lastVerifiedPickupId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('verify-msg').textContent =
+                        `✅ Status updated to: ${newStatus}. ${newStatus === 'Confirmed' ? 'Staff notified by email.' : ''}`;
+                    if (currentActivePanel === 'pickup') loadPickups();
+                } else {
+                    alert('Update failed: ' + (data.message || 'Unknown'));
+                }
+            } catch (e) {
+                alert('Network error');
+            } finally {
+                btn.innerHTML = origHTML;
+                btn.disabled = false;
+            }
+        }
+
+        function verifyById() {
+            const id = document.getElementById('manual-booking-id').value;
+            if (!id) return alert("Please enter a booking ID");
+            verifyBooking(id);
+        }
+
+        async function handleQRUpload(input) {
+            if (!input.files || !input.files[0]) return;
+
+            const btn = input.parentElement;
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<div class="animate-spin text-4xl text-brand-primary"><i class="fa-solid fa-circle-notch"></i></div><p class="mt-4">Scanning Image...</p>';
+
+            const formData = new FormData();
+            formData.append('file', input.files[0]);
+
+            try {
+                const res = await fetch('/api/admin/scan-qr', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if (data.success) {
+                    verifyBooking(data.booking_id);
+                } else {
+                    alert(data.message);
+                }
+            } catch (e) {
+                alert("Upload failed or QR not readable");
+            } finally {
+                btn.innerHTML = originalHTML;
+            }
+        }
     </script>
+
+    <!-- WALK-IN DIRECT ENTRY MODAL -->
+    <div id="walkin-modal"
+        class="fixed inset-0 z-[60] hidden flex items-center justify-center bg-black/80 backdrop-blur-md">
+        <div class="glass-panel p-8 rounded-3xl w-full max-w-lg border border-white/10 relative animate-fade-in-up">
+            <button onclick="toggleWalkInModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white"><i
+                    class="fa-solid fa-xmark text-2xl"></i></button>
+            <h3 class="text-2xl font-bold mb-2">Direct Entry</h3>
+            <p class="text-slate-400 mb-6 text-sm">Register a vehicle that arrived directly at the station.</p>
+
+            <form id="walkin-form" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Customer Name</label>
+                        <input type="text" name="customer_name" required
+                            class="w-full bg-white/5 border border-white/10 p-3 rounded-xl outline-none focus:border-brand-primary text-sm">
+                    </div>
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Phone Number</label>
+                        <input type="tel" name="phone" required
+                            class="w-full bg-white/5 border border-white/10 p-3 rounded-xl outline-none focus:border-brand-primary text-sm">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Vehicle Number</label>
+                        <input type="text" name="vehicle_number" placeholder="KL-xx-xxxx" required
+                            class="w-full bg-white/5 border border-white/10 p-3 rounded-xl outline-none focus:border-brand-primary text-sm font-mono uppercase">
+                    </div>
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Vehicle Type</label>
+                        <select name="vehicle_type"
+                            class="w-full bg-white/5 border border-white/10 p-3 rounded-xl outline-none focus:border-brand-primary text-sm">
+                            <option value="Hatchback" class="bg-slate-900">Hatchback</option>
+                            <option value="Sedan" class="bg-slate-900">Sedan</option>
+                            <option value="SUV" class="bg-slate-900">SUV</option>
+                            <option value="Luxury" class="bg-slate-900">Luxury</option>
+                            <option value="Bike" class="bg-slate-900">Bike</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Service Package</label>
+                    <select name="service_package" required
+                        class="w-full bg-white/5 border border-white/10 p-3 rounded-xl outline-none focus:border-brand-primary text-sm">
+                        <option value="Basic Wash" class="bg-slate-900">Basic Wash - ₹200</option>
+                        <option value="Normal" class="bg-slate-900">Normal - ₹350</option>
+                        <option value="Super" class="bg-slate-900">Super - ₹450</option>
+                        <option value="Premium" class="bg-slate-900">Premium - ₹600</option>
+                        <option value="Premium Plus" class="bg-slate-900">Premium Plus - ₹800</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Amount Paid (₹)</label>
+                    <input type="number" name="amount" required
+                        class="w-full bg-white/5 border border-white/10 p-3 rounded-xl outline-none focus:border-brand-primary text-sm font-bold text-brand-primary">
+                </div>
+
+                <button type="submit"
+                    class="w-full py-4 rounded-xl btn-gradient text-brand-dark font-bold mt-4 shadow-xl shadow-cyan-500/10">CONFIRM
+                    & RECORD</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function toggleWalkInModal() { document.getElementById('walkin-modal').classList.toggle('hidden'); }
+        function openWalkInModal() { toggleWalkInModal(); }
+
+        document.getElementById('walkin-form')?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+
+            const btn = e.target.querySelector('button');
+            btn.disabled = true;
+            btn.textContent = "Processing...";
+
+            try {
+                const res = await fetch('/api/admin/bookings/direct', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+                if (result.success) {
+                    alert("Walk-in booking recorded successfully!");
+                    toggleWalkInModal();
+                    e.target.reset();
+                    loadAnalytics();
+                    loadRecentBookings();
+                } else {
+                    alert("Error: " + result.message);
+                }
+            } catch (err) { alert("Failed to connect to server"); }
+            finally { btn.disabled = false; btn.textContent = "CONFIRM & RECORD"; }
+        });
+    </script>
+    <!-- STAFF DETAILS MODAL -->
+    <div id="staff-details-modal"
+        class="fixed inset-0 z-[100] hidden flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+        <div class="glass-panel p-8 max-w-2xl w-full border border-white/10 relative overflow-y-auto max-h-[90vh]">
+            <button onclick="document.getElementById('staff-details-modal').classList.add('hidden')"
+                class="absolute top-4 right-4 text-slate-400 hover:text-white"><i
+                    class="fa-solid fa-xmark text-2xl"></i></button>
+
+            <div class="flex items-center gap-6 mb-8">
+                <div
+                    class="h-20 w-20 rounded-3xl bg-brand-primary/10 flex items-center justify-center text-brand-primary text-3xl">
+                    <i class="fa-solid fa-user-tie"></i>
+                </div>
+                <div>
+                    <h3 id="sd-name" class="text-3xl font-bold">Staff Name</h3>
+                    <p class="text-brand-primary font-medium">D2 Professional Staff</p>
+                </div>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8">
+                <div class="space-y-6">
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Contact Information
+                        </h4>
+                        <div class="space-y-3">
+                            <div class="flex items-center gap-3 text-sm"><i
+                                    class="fa-solid fa-envelope text-slate-500 w-5"></i> <span id="sd-email"></span>
+                            </div>
+                            <div class="flex items-center gap-3 text-sm"><i
+                                    class="fa-solid fa-phone text-slate-500 w-5"></i> <span id="sd-phone"></span></div>
+                            <div class="flex items-center gap-3 text-sm"><i
+                                    class="fa-solid fa-calendar text-slate-500 w-5"></i> <span>Joined: <span
+                                        id="sd-joined"></span></span></div>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Recent Attendance
+                        </h4>
+                        <div id="sd-attendance-list" class="space-y-2">
+                            <!-- JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Assigned Services</h4>
+                    <div id="sd-jobs-list" class="space-y-3">
+                        <!-- JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>

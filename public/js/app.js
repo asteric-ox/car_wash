@@ -31,6 +31,8 @@ function togglePickupStatusModal() {
 function switchAuthMode(mode) {
     const loginContainer = document.getElementById('login-form-container');
     const registerContainer = document.getElementById('register-form-container');
+    const forgotContainer = document.getElementById('forgot-form-container');
+    const resetContainer = document.getElementById('reset-form-container');
     const loginTab = document.getElementById('login-tab');
     const staffTab = document.getElementById('staff-tab');
     const loginTitle = document.getElementById('login-title');
@@ -39,6 +41,8 @@ function switchAuthMode(mode) {
     if (mode === 'login' || mode === 'staff') {
         loginContainer.style.left = "30px";
         registerContainer.style.left = "450px";
+        if (forgotContainer) forgotContainer.style.left = "450px";
+        if (resetContainer) resetContainer.style.left = "450px";
 
         if (loginTab && staffTab) {
             if (mode === 'login') {
@@ -57,20 +61,34 @@ function switchAuthMode(mode) {
                 if (loginSubtitle) loginSubtitle.textContent = "Management Portal Login";
             }
         }
-    } else {
+    } else if (mode === 'register') {
         loginContainer.style.left = "-400px";
         registerContainer.style.left = "30px";
+        if (forgotContainer) forgotContainer.style.left = "450px";
+        if (resetContainer) resetContainer.style.left = "450px";
+    } else if (mode === 'forgot') {
+        loginContainer.style.left = "-400px";
+        registerContainer.style.left = "450px";
+        if (forgotContainer) forgotContainer.style.left = "30px";
+        if (resetContainer) resetContainer.style.left = "450px";
+    } else if (mode === 'reset') {
+        loginContainer.style.left = "-400px";
+        registerContainer.style.left = "450px";
+        if (forgotContainer) forgotContainer.style.left = "450px";
+        if (resetContainer) resetContainer.style.left = "30px";
     }
 }
 
 async function logout() {
     try {
         await fetch('/api/logout', { method: 'POST' });
-        window.location.reload();
+        window.location.href = '/index.html';
     } catch (err) {
         console.error(err);
+        window.location.reload();
     }
 }
+
 
 document.addEventListener('DOMContentLoaded', () => {
     // Check Auth on Load
@@ -156,19 +174,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const profilePic = user.profile_pic || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user.name) + '&background=06b6d4&color=fff';
             container.innerHTML = `
                 <div class="flex items-center gap-4">
-                    <button id="notif-btn" class="relative text-slate-300 hover:text-white transition-colors p-2 rounded-full hover:bg-white/5">
-                        <i class="fa-solid fa-bell text-xl"></i>
-                        <span id="notif-badge" class="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center hidden shadow-sm border border-brand-dark">0</span>
+                    <button id="notif-btn" class="relative text-slate-300 hover:text-brand-primary transition-all p-2.5 rounded-xl bg-white/5 border border-white/5 hover:border-brand-primary/30">
+                        <i class="fa-solid fa-bell text-lg"></i>
+                        <span id="notif-badge" class="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center hidden shadow-lg border border-brand-dark scale-110">0</span>
                     </button>
-                    <button onclick="toggleProfileModal()" class="flex items-center gap-2 hover:bg-white/5 p-1 rounded-full transition group">
-                        <img src="${profilePic}" alt="Profile" class="w-8 h-8 rounded-full border border-white/10 group-hover:border-brand-primary">
+                    <button onclick="toggleProfileModal()" class="flex items-center gap-2 hover:bg-white/10 p-1 pr-4 rounded-xl transition-all group bg-white/5 border border-white/5 hover:border-brand-primary/20">
+                        <img src="${profilePic}" alt="Profile" class="w-8 h-8 rounded-lg border border-white/10 group-hover:border-brand-primary/50 transition-all">
                         <div class="flex flex-col items-start hidden lg:flex">
-                            <span class="text-[10px] text-slate-400 leading-none">Settings</span>
-                            <span class="text-sm font-semibold text-white leading-tight">${user.name.split(' ')[0]}</span>
+                            <span class="text-[9px] text-slate-500 uppercase tracking-widest font-black leading-none mb-0.5">Settings</span>
+                            <span class="text-xs font-bold text-white leading-tight">${user.name.split(' ')[0]}</span>
                         </div>
                     </button>
-                    <button onclick="logout()" class="text-xs text-red-400 hover:text-red-300 transition hover:underline">Logout</button>
-                    <a href="#book" class="btn-primary text-brand-dark font-bold px-5 py-2 rounded-full text-sm shadow-lg hover:shadow-cyan-500/20 transition-all">Book</a>
+                    
+                    <!-- NEW: Impressive Logout Button -->
+                    <button onclick="logout()" 
+                        class="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-all duration-300 group shadow-lg shadow-red-500/5">
+                        <i class="fa-solid fa-power-off text-sm group-hover:rotate-12 transition-transform"></i>
+                        <span class="text-[10px] font-black uppercase tracking-widest hidden md:block">Logout</span>
+                    </button>
+
+                    <a href="#book" class="bg-brand-primary text-brand-dark font-black px-6 py-2.5 rounded-xl text-xs uppercase tracking-widest shadow-xl shadow-cyan-500/20 hover:brightness-110 hover:scale-105 transition-all">Book</a>
                 </div>
             `;
         } else {
@@ -231,6 +256,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 data.fullname = data.name;
             }
 
+            // Check if passwords match
+            if (data.password !== data.confirm_password) {
+                alert('Passwords do not match. Please check again.');
+                return;
+            }
+
             console.log('Registration data being sent:', data);
 
             try {
@@ -252,6 +283,88 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (err) {
                 console.error('Registration error:', err);
                 alert('Registration failed: ' + err.message);
+            }
+        });
+    }
+
+    // Forgot Password Form
+    const forgotForm = document.getElementById('forgot-form');
+    if (forgotForm) {
+        forgotForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = forgotForm.querySelector('button');
+            const originalText = submitBtn.innerHTML;
+
+            const email = new FormData(forgotForm).get('email');
+
+            try {
+                submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...';
+                submitBtn.disabled = true;
+
+                const res = await fetch('/api/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    showNotification('OTP Sent', result.message, 'success');
+                    // Store email for step 2 in session storage
+                    sessionStorage.setItem('resetEmail', email);
+                    switchAuthMode('reset');
+                } else {
+                    showNotification('Error', result.message, 'error');
+                }
+            } catch (err) {
+                showNotification('Error', 'Connection error. Please try again.', 'error');
+            } finally {
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
+            }
+        });
+    }
+
+    // Reset Password Form
+    const resetForm = document.getElementById('reset-form');
+    if (resetForm) {
+        resetForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = resetForm.querySelector('button');
+            const originalText = submitBtn.innerHTML;
+
+            const formData = new FormData(resetForm);
+            const data = Object.fromEntries(formData.entries());
+            data.email = sessionStorage.getItem('resetEmail');
+
+            if (!data.email) {
+                showNotification('Error', 'Reference lost. Please start over.', 'warning');
+                switchAuthMode('forgot');
+                return;
+            }
+
+            try {
+                submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Updating...';
+                submitBtn.disabled = true;
+
+                const res = await fetch('/api/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+                if (result.success) {
+                    showNotification('Success', result.message, 'success');
+                    switchAuthMode('login');
+                    resetForm.reset();
+                    sessionStorage.removeItem('resetEmail');
+                } else {
+                    showNotification('Error', result.message, 'error');
+                }
+            } catch (err) {
+                showNotification('Error', 'Connection error. Please try again.', 'error');
+            } finally {
+                submitBtn.innerHTML = originalText;
+                submitBtn.disabled = false;
             }
         });
     }
@@ -477,7 +590,12 @@ form.addEventListener('submit', async (e) => {
 
             // Print Bill
             if (confirm("Do you want to print the receipt?")) {
-                printBill(data, result.bookingId);
+                try {
+                    printBill(data, result.bookingId);
+                } catch (e) {
+                    console.error("Print failed", e);
+                    alert("Unable to open print window. Please disable your popup blocker.");
+                }
             }
 
             // window.location.reload(); // Don't reload, just reset and update UI
@@ -565,50 +683,90 @@ async function fetchShopStatus() {
         const dot = document.getElementById('status-dot');
         const ping = document.getElementById('status-ping');
 
+        const queueEl = document.getElementById('status-queue');
+        const waitEl = document.getElementById('status-wait');
+
         if (container) {
             container.classList.remove('hidden');
 
-            if (data.is_busy) {
-                let statusText = data.current_vehicle;
-                if (statusText === 'AUTH_REQUIRED') {
-                    statusText = "Busy • Click to Check";
-                } else if (statusText) {
-                    statusText = `Cleaning: ${statusText}`;
-                } else {
-                    statusText = data.message || 'Busy';
-                }
+            const status = data.status || 'OPEN';
 
-                text.textContent = statusText;
-                // Ensure red classes
-                card.classList.remove('border-l-green-500');
-                card.classList.add('border-l-red-500');
-                dot.classList.remove('bg-green-500');
-                dot.classList.add('bg-red-500');
-                ping.classList.remove('bg-green-400');
-                ping.classList.add('bg-red-400');
+            // --- MAINTENANCE BANNER LOGIC ---
+            const isMaintenance = status === 'MAINTENANCE' || status === 'EMERGENCY MAINTENANCE';
+            let maintenanceBanner = document.getElementById('maintenance-overlay');
+
+            if (isMaintenance) {
+                // Create or show maintenance overlay
+                if (!maintenanceBanner) {
+                    maintenanceBanner = document.createElement('div');
+                    maintenanceBanner.id = 'maintenance-overlay';
+                    maintenanceBanner.style.cssText = `
+                        position: fixed; inset: 0; z-index: 9999;
+                        display: flex; align-items: center; justify-content: center;
+                        background: rgba(3,7,18,0.93);
+                        backdrop-filter: blur(20px);
+                        flex-direction: column; gap: 24px;
+                        animation: fadeIn 0.5s ease;
+                    `;
+                    maintenanceBanner.innerHTML = `
+                        <div style="text-align:center; max-width: 520px; padding: 2rem;">
+                            <div style="font-size:5rem; margin-bottom:1rem; animation: pulse 2s infinite;">🔧</div>
+                            <h1 style="font-size:2rem; font-weight:900; color:#f59e0b; margin-bottom:0.5rem; letter-spacing:-0.05em;">Under Maintenance</h1>
+                            <p style="color:#94a3b8; font-size:1rem; margin-bottom:1.5rem; line-height:1.6;">
+                                ${data.message || 'D2 Car Wash is temporarily undergoing maintenance. We will be back shortly!'}
+                            </p>
+                            <div style="display:inline-flex; align-items:center; gap:8px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); padding:12px 24px; border-radius:100px; color:#f59e0b; font-weight:700;">
+                                <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#f59e0b; animation:ping 1s infinite;"></span>
+                                ${status}
+                            </div>
+                            <p style="color:#475569; font-size:0.75rem; margin-top:1.5rem;">Last updated by: ${data.updated_by || 'Admin'}</p>
+                        </div>
+                    `;
+                    document.body.appendChild(maintenanceBanner);
+                } else {
+                    maintenanceBanner.style.display = 'flex';
+                }
             } else {
-                text.textContent = data.message || 'Station Free';
-                // Ensure green classes
-                card.classList.remove('border-l-red-500');
-                card.classList.add('border-l-green-500');
-                dot.classList.remove('bg-red-500');
-                dot.classList.add('bg-green-500');
-                ping.classList.remove('bg-red-400');
-                ping.classList.add('bg-green-400');
+                // Hide banner if status is normal
+                if (maintenanceBanner) {
+                    maintenanceBanner.style.display = 'none';
+                }
             }
 
-            // Add or update click behavior
+            // UI Themes based on status
+            const themes = {
+                'OPEN': { dot: 'bg-green-500', ping: 'bg-green-400', text: 'Station Free' },
+                'BUSY': { dot: 'bg-yellow-500', ping: 'bg-yellow-400', text: 'Washing' },
+                'FULLY BOOKED': { dot: 'bg-orange-500', ping: 'bg-orange-400', text: 'Full Output' },
+                'CLOSED': { dot: 'bg-red-500', ping: 'bg-red-400', text: 'Closed' },
+                'MAINTENANCE': { dot: 'bg-amber-500', ping: 'bg-amber-400', text: 'Maintenance' },
+                'EMERGENCY MAINTENANCE': { dot: 'bg-red-600', ping: 'bg-red-500', text: 'Maintenance' }
+            };
+
+            const theme = themes[status] || themes['OPEN'];
+
+            // Update Text (Use custom message if BUSY or CLOSED)
+            if (status === 'BUSY' && data.current_vehicle && data.current_vehicle !== 'AUTH_REQUIRED') {
+                text.textContent = data.current_vehicle;
+            } else if (data.message && status !== 'OPEN') {
+                text.textContent = data.message.substring(0, 24);
+            } else {
+                text.textContent = theme.text;
+            }
+
+            // Apply Colors
+            if (dot) dot.className = `relative inline-flex rounded-full h-3.5 w-3.5 ${theme.dot}`;
+            if (ping) ping.className = `animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${theme.ping}`;
+
+            // Update Stats
+            if (queueEl) queueEl.textContent = data.queue_count || 0;
+            if (waitEl) waitEl.textContent = data.wait_time || 0;
+
+            // Updated Click Behavior
             card.onclick = () => {
-                if (!currentUser) {
-                    showNotification('Login Required', 'Please login to view or book.', 'warning');
-                    toggleAuthModal();
-                } else if (data.is_busy && data.current_vehicle === 'AUTH_REQUIRED') {
-                    // This case happens if auth check hasn't updated yet or server rejected
-                    showNotification('Authentication Pending', 'Please refresh your session.', 'error');
-                } else if (data.is_busy) {
-                    showNotification('Station Busy', `Currently washing: ${data.current_vehicle || 'Vehicle'}`, 'info');
+                if (status === 'CLOSED' || status === 'EMERGENCY MAINTENANCE' || status === 'MAINTENANCE') {
+                    showNotification('Status Update', data.message || 'We are currently offline.', 'info');
                 } else {
-                    // Station is Free -> Direct to booking
                     handleBookClick();
                 }
             };
@@ -1340,6 +1498,11 @@ async function fetchNotifications() {
 function printBill(bookingData, bookingId) {
     const printWindow = window.open('', '', 'height=600,width=800');
 
+    if (!printWindow) {
+        alert("Popup blocked! Please allow popups for this site to print your receipt.");
+        return;
+    }
+
     // Calculate Total (Simple logic based on packet name - assuming prices for now or passing it)
     let priceEstimate = "Pending Inspection";
 
@@ -1490,3 +1653,17 @@ document.addEventListener('DOMContentLoaded', () => {
         observer.observe(el);
     });
 });
+
+function togglePassword(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(iconId);
+    if (input.type === "password") {
+        input.type = "text";
+        icon.classList.remove("fa-eye");
+        icon.classList.add("fa-eye-slash");
+    } else {
+        input.type = "password";
+        icon.classList.remove("fa-eye-slash");
+        icon.classList.add("fa-eye");
+    }
+}

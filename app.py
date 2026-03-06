@@ -10,6 +10,12 @@ from datetime import timedelta
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
+import qrcode
+import io
+import base64
+import datetime
+from datetime import timedelta
 from dotenv import load_dotenv
 from functools import wraps
 
@@ -66,9 +72,19 @@ def init_db():
             role ENUM('admin','staff','customer') DEFAULT 'customer',
             status ENUM('active','inactive') DEFAULT 'active',
             stamps INT DEFAULT 0,
+            reset_otp VARCHAR(6),
+            otp_expiry DATETIME,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
+
+        # Add missing columns if table already exists
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN reset_otp VARCHAR(6) AFTER stamps")
+        except: pass
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN otp_expiry DATETIME AFTER reset_otp")
+        except: pass
 
         # Vehicles Table
         cursor.execute("""
@@ -132,12 +148,35 @@ def init_db():
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS shop_status (
             id INT PRIMARY KEY,
+            status VARCHAR(50) DEFAULT 'OPEN',
+            message VARCHAR(255),
             is_busy BOOLEAN DEFAULT 0,
             current_vehicle VARCHAR(255),
-            message VARCHAR(255),
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            pickup_active BOOLEAN DEFAULT 1,
+            queue_count INT DEFAULT 0,
+            wait_time INT DEFAULT 0,
+            updated_by VARCHAR(255),
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         )
         """)
+
+        # Add missing columns if table already exists
+        columns_to_add = [
+            ("status", "VARCHAR(50) DEFAULT 'OPEN'"),
+            ("pickup_active", "BOOLEAN DEFAULT 1"),
+            ("queue_count", "INT DEFAULT 0"),
+            ("wait_time", "INT DEFAULT 0"),
+            ("updated_by", "VARCHAR(255)")
+        ]
+        for col_name, col_def in columns_to_add:
+            try:
+                cursor.execute(f"ALTER TABLE shop_status ADD COLUMN {col_name} {col_def}")
+            except: pass
+
+        # Fix bookings.status column — convert from ENUM to VARCHAR so pickup statuses work
+        try:
+            cursor.execute("ALTER TABLE bookings MODIFY COLUMN status VARCHAR(50) DEFAULT 'Pending'")
+        except: pass
 
         # Notifications Table
         cursor.execute("""
@@ -147,6 +186,18 @@ def init_db():
             message TEXT,
             is_read BOOLEAN DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        # Staff Attendance Table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS staff_attendance (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            staff_id INT,
+            date DATE,
+            status ENUM('Present', 'Absent') DEFAULT 'Present',
+            notes TEXT,
+            FOREIGN KEY (staff_id) REFERENCES users(id)
         )
         """)
 
@@ -175,11 +226,19 @@ def init_db():
 
         cursor.execute("SELECT COUNT(*) FROM shop_status")
         if cursor.fetchone()[0] == 0:
-            cursor.execute("INSERT INTO shop_status (id, is_busy, message) VALUES (1, 0, 'Ready to Shine!')")
+            cursor.execute("""
+                INSERT INTO shop_status (id, status, message, is_busy, pickup_active, queue_count, wait_time) 
+                VALUES (1, 'OPEN', 'Ready to Shine!', 0, 1, 0, 0)
+            """)
 
-        cursor.execute("SELECT COUNT(*) FROM admins WHERE username = 'admin'")
+        # Seed staff account if doesn't exist
+        cursor.execute("SELECT COUNT(*) FROM users WHERE email = 'staff@123'")
         if cursor.fetchone()[0] == 0:
-            cursor.execute("INSERT INTO admins (username, password, role) VALUES ('admin', '1234', 'master')")
+            staff_pw = generate_password_hash("staff@123")
+            cursor.execute("""
+                INSERT INTO users (fullname, email, phone, password, password_hash, role)
+                VALUES ('D2 Staff', 'staff@123', '9999999999', %s, %s, 'staff')
+            """, (staff_pw, staff_pw))
 
         conn.commit()
         cursor.close()
@@ -220,6 +279,17 @@ def get_logged_in_user(req):
     cursor.close()
     conn.close()
     return user
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session or session.get('role') != 'admin':
+            # Check if it's a mobile/API admin with token
+            mobile_admin = get_logged_in_user(request)
+            if not mobile_admin:
+                return jsonify({"success": False, "message": "Admin access required"}), 403
+        return f(*args, **kwargs)
+    return decorated_function
 
 # =========================
 # ROUTES (FRONTEND & STATIC)
@@ -441,22 +511,25 @@ def book_service():
 
         print(f"DEBUG: Booking created successfully. ID: {booking_id}")
         
-        # Notification
-        msg = f"Booking Confirmed: {service_package} for {vehicle_type} on {date} at {time_val}."
-        if is_pickup:
-            msg = f"Pickup Requested: {service_package} for {vehicle_type} on {date} at {time_val}."
-            
-        cursor.execute("INSERT INTO notifications (user_id, message) VALUES (%s, %s)", (user_id, msg))
-
         conn.commit()
         cursor.close()
         conn.close()
 
-        # Send Email Confirmation
+        # Send Notifications (Email & SMS)
         try:
-            send_booking_email(customer_name, email, service_package, date, time_val, vehicle_number)
+            # Email
+            if not is_pickup:
+                send_booking_email(booking_id, customer_name, email, service_package, date, time_val, vehicle_number)
+                print(f"DEBUG: Confirmation email sent to {email}")
             
-            # If pickup, send to staff too
+            # SMS (New Feature)
+            sms_text = f"D2 Car Wash: Booking Confirmed! ID: #{booking_id}. {service_package} on {date} at {time_val}. Thank you!"
+            if is_pickup:
+                sms_text = f"D2 Car Wash: Pickup Request Received! ID: #{booking_id}. Our staff will contact you shortly. Ph: 8590624912"
+            
+            send_sms_notification(phone, sms_text)
+
+            # If pickup, send alert to staff ONLY (Customer gets QR later when approved)
             if is_pickup and location:
                 try:
                     lat, lng = location.split(',')
@@ -466,9 +539,8 @@ def book_service():
                 except:
                     print("DEBUG: Failed to parse location or send staff email")
 
-            print(f"DEBUG: Confirmation email sent to {email}")
-        except Exception as mail_err:
-            print(f"DEBUG: Mail ERROR: {mail_err}")
+        except Exception as notify_err:
+            print(f"DEBUG: Notification helper error: {notify_err}")
 
         return jsonify({
             "success": True, 
@@ -548,20 +620,204 @@ def request_pickup():
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 
+@app.route('/api/admin/pickup/pending', methods=['GET'])
+@admin_required
+def get_pending_pickups():
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT b.id, b.customer_name, b.phone, b.location, b.status, b.created_at
+            FROM bookings b
+            WHERE b.is_pickup = 1
+            ORDER BY b.created_at DESC
+            LIMIT 50
+        """)
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return jsonify(serialize_db_rows(rows))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/pickup/approve/<int:booking_id>', methods=['POST'])
+@admin_required
+def approve_pickup(booking_id):
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM bookings WHERE id = %s AND is_pickup = 1", (booking_id,))
+        booking = cursor.fetchone()
+        if not booking:
+            cursor.close(); conn.close()
+            return jsonify({"success": False, "message": "Pickup booking not found"}), 404
+
+        cursor.execute("UPDATE bookings SET status = 'Confirmed' WHERE id = %s", (booking_id,))
+        # notify user
+        if booking.get('user_id'):
+            cursor.execute("INSERT INTO notifications (user_id, message) VALUES (%s, %s)",
+                           (booking['user_id'], "Your pickup request has been confirmed! Staff will arrive shortly."))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        # Send both Staff notification and Customer QR Email
+        send_pickup_confirmation_emails(booking)
+
+        return jsonify({"success": True, "message": f"Pickup approved. Phone sent to staff and QR sent to customer."})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+def send_pickup_confirmation_emails(booking):
+    """Helper to send the pickup confirmed emails to both staff and customer."""
+    try:
+        booking_id = booking['id']
+        sender_email = os.getenv('MAIL_USER', 'thattilservicecentree@gmail.com')
+        sender_password = os.getenv('MAIL_PASS', 'jycr hgbu cyjp bfst')
+        staff_email = "delvindavis031@gmail.com"
+        lat_lng = booking.get('location', 'N/A')
+        maps_link = f"https://www.google.com/maps?q={lat_lng}" if ',' in str(lat_lng) else '#'
+
+        # --- Generate QR code for pickup verification ---
+        qr_data = f"PICKUP-{booking_id}"
+        qr_img = qrcode.make(qr_data)
+        qr_buffer = io.BytesIO()
+        qr_img.save(qr_buffer, format='PNG')
+        qr_bytes = qr_buffer.getvalue()
+
+        # --- Staff email with phone + maps ---
+        staff_msg = MIMEMultipart()
+        staff_msg['From'] = f"D2 Admin <{sender_email}>"
+        staff_msg['To'] = staff_email
+        staff_msg['Subject'] = f"✅ PICKUP CONFIRMED - {booking['customer_name']}"
+        staff_body = f"""
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;border:1px solid #eee;border-radius:10px;">
+            <h2 style="color:#06b6d4;">Pickup Confirmed</h2>
+            <p><b>Customer:</b> {booking['customer_name']}</p>
+            <p><b>Phone:</b> <a href="tel:{booking['phone']}" style="color:#06b6d4;font-size:20px;font-weight:bold;">{booking['phone']}</a></p>
+            <p><b>Location:</b> <a href="{maps_link}">View on Maps</a></p>
+            <p><b>Booking ID:</b> #{booking_id}</p>
+            <hr>
+            <p>Please call the customer and proceed to their location.</p>
+        </div>"""
+        staff_msg.attach(MIMEText(staff_body, 'html'))
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, staff_email, staff_msg.as_string())
+        server.quit()
+
+        # --- Customer email with QR code ---
+        customer_email = booking.get('email')
+        if customer_email:
+            cust_msg = MIMEMultipart('related')
+            cust_msg['From'] = f"D2 Car Wash <{sender_email}>"
+            cust_msg['To'] = customer_email
+            cust_msg['Subject'] = f"🚗 Your Pickup is Confirmed! - D2 Car Wash"
+
+            cust_html = f"""
+            <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;border:1px solid #eee;border-radius:12px;">
+                <h2 style="color:#06b6d4;text-align:center;">✅ Pickup Confirmed!</h2>
+                <p>Dear <b>{booking['customer_name']}</b>,</p>
+                <p>Your pickup request has been <b style="color:#06b6d4;">confirmed</b>. Our staff will arrive at your location shortly.</p>
+                <p><b>Pickup ID:</b> #{str(booking_id).zfill(4)}</p>
+                <div style="text-align:center;margin:24px 0;">
+                    <p style="color:#555;">Show this QR code to our staff when they arrive:</p>
+                    <img src="cid:pickup_qr" alt="Pickup QR Code" style="width:180px;height:180px;border:4px solid #06b6d4;border-radius:12px;padding:8px;">
+                </div>
+                <p style="color:#888;font-size:12px;text-align:center;">Booking Reference: PICKUP-{booking_id}</p>
+                <hr style="border:0;border-top:1px solid #eee;margin:16px 0;">
+                <p>Regards,<br><b>D2 Car Wash Team</b><br>Thrissur, Kerala</p>
+            </div>"""
+
+            cust_msg.attach(MIMEText(cust_html, 'html'))
+            qr_attachment = MIMEImage(qr_bytes, name='pickup_qr.png')
+            qr_attachment.add_header('Content-ID', '<pickup_qr>')
+            qr_attachment.add_header('Content-Disposition', 'inline', filename='pickup_qr.png')
+            cust_msg.attach(qr_attachment)
+
+            server2 = smtplib.SMTP('smtp.gmail.com', 587)
+            server2.starttls()
+            server2.login(sender_email, sender_password)
+            server2.sendmail(sender_email, customer_email, cust_msg.as_string())
+            server2.quit()
+    except Exception as e:
+        print(f"Error in send_pickup_confirmation_emails: {e}")
+
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route('/api/admin/pickup/update/<int:booking_id>', methods=['POST'])
+@admin_required
+def update_pickup_status(booking_id):
+    """Update pickup status to any value and notify the customer."""
+    data = request.json
+    new_status = data.get('status', '').strip()
+
+    VALID_STATUSES = ['Pending', 'Confirmed', 'Picked', 'Washing', 'Drying', 'Delivered', 'Cancelled']
+    if new_status not in VALID_STATUSES:
+        return jsonify({"success": False, "message": f"Invalid status. Must be one of: {', '.join(VALID_STATUSES)}"}), 400
+
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM bookings WHERE id = %s AND is_pickup = 1", (booking_id,))
+        booking = cursor.fetchone()
+
+        if not booking:
+            cursor.close(); conn.close()
+            return jsonify({"success": False, "message": "Pickup booking not found"}), 404
+
+        cursor.execute("UPDATE bookings SET status = %s WHERE id = %s", (new_status, booking_id))
+
+        # Customer notification messages per status
+        notif_messages = {
+            'Confirmed':  "✅ Your pickup has been confirmed! Staff will arrive shortly.",
+            'Picked':     "🚗 Staff has picked up your vehicle and is on the way.",
+            'Washing':    "🫧 Your vehicle is now being washed.",
+            'Drying':     "💨 Your vehicle is being dried and polished.",
+            'Delivered':  "🎉 Your vehicle has been delivered. Thank you for choosing D2 Car Wash!",
+            'Cancelled':  "❌ Your pickup request has been cancelled. Please contact us for more info.",
+        }
+        if booking.get('user_id') and new_status in notif_messages:
+            cursor.execute(
+                "INSERT INTO notifications (user_id, message) VALUES (%s, %s)",
+                (booking['user_id'], notif_messages[new_status])
+            )
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        # If confirming, send staff email AND customer QR code email
+        if new_status == 'Confirmed':
+            send_pickup_confirmation_emails(booking)
+
+        return jsonify({"success": True, "message": f"Pickup #{booking_id} status updated to '{new_status}'.", "status": new_status})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+
+
+
 @app.route('/api/pickup/status/<int:booking_id>', methods=['GET'])
 def get_pickup_status(booking_id):
     try:
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT status FROM bookings WHERE id = %s", (booking_id,))
-        row = cursor.fetchone()
+        booking = cursor.fetchone()
         cursor.close()
         conn.close()
-        return jsonify(row) if row else jsonify({"status": "Not Found"}), 404
-        # Verify user matches booking? Not strictly necessary for status check but good for privacy
-        return jsonify(row) if row else jsonify({"status": "Not Found"}), 404
+        
+        if booking:
+            return jsonify({"success": True, "status": booking['status']})
+        return jsonify({"success": False, "message": "Booking not found"}), 404
     except Exception as e:
-        return jsonify({"status": "Error", "message": str(e)}), 500
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
 @app.route('/api/notifications', methods=['GET'])
@@ -628,21 +884,90 @@ def get_slots():
 
 @app.route('/api/status', methods=['GET'])
 def get_shop_status():
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM shop_status WHERE id = 1")
-    row = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    
-    if row:
-        row['is_busy'] = bool(row['is_busy'])
-        # Privacy check
-        is_authenticated = ('user_id' in session) or (get_logged_in_user(request) is not None)
-        if not is_authenticated and row['is_busy']:
-            row['current_vehicle'] = "AUTH_REQUIRED"
-        return jsonify(row)
-    return jsonify({"is_busy": False, "message": "Ready"})
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM shop_status WHERE id = 1")
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if row:
+            # Conversion for JSON
+            row['is_busy'] = bool(row['is_busy'])
+            row['pickup_active'] = bool(row['pickup_active'])
+            
+            # Privacy for non-authenticated users
+            is_authenticated = ('user_id' in session) or (get_logged_in_user(request) is not None)
+            if not is_authenticated and row['is_busy']:
+                row['current_vehicle'] = "AUTH_REQUIRED"
+            
+            return jsonify(serialize_db_row(row))
+        return jsonify({"status": "OPEN", "message": "Ready to Shine!", "is_busy": False})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/status', methods=['POST'])
+@admin_required
+def update_shop_status():
+    data = request.json
+    status = data.get('status', 'OPEN')
+    message = data.get('message', '')
+    is_busy = data.get('is_busy', False)
+    current_vehicle = data.get('current_vehicle', '')
+    pickup_active = data.get('pickup_active', True)
+    queue_count = data.get('queue_count', 0)
+    wait_time = data.get('wait_time', 0)
+    updated_by = session.get('user_name', 'Admin')
+
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE shop_status 
+            SET status=%s, message=%s, is_busy=%s, current_vehicle=%s, 
+                pickup_active=%s, queue_count=%s, wait_time=%s, updated_by=%s
+            WHERE id = 1
+        """, (status, message, is_busy, current_vehicle, pickup_active, queue_count, wait_time, updated_by))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({
+            "success": True, 
+            "message": "Shop Status Updated Successfully",
+            "status": status
+        })
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+@app.route('/api/admin/register-staff', methods=['POST'])
+@admin_required
+def register_staff():
+    data = request.json
+    fullname = data.get('fullname')
+    email = data.get('email')
+    phone = data.get('phone')
+    password = data.get('password')
+
+    if not all([fullname, email, password]):
+        return jsonify({"success": False, "message": "Required fields missing"}), 400
+
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        hashed_pw = generate_password_hash(password)
+        cursor.execute("""
+            INSERT INTO users (fullname, email, phone, password, password_hash, role)
+            VALUES (%s, %s, %s, %s, %s, 'staff')
+        """, (fullname, email, phone, hashed_pw, hashed_pw))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"success": True, "message": f"Staff {fullname} registered successfully"})
+    except mysql.connector.IntegrityError:
+        return jsonify({"success": False, "message": "Email or Phone already exists"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route('/api/weather', methods=['GET'])
 def get_weather():
@@ -1060,31 +1385,121 @@ def submit_feedback():
 # =========================
 # EMAIL HELPER
 # =========================
-def send_booking_email(name, to_email, package, date, time_val, vehicle_no):
+def send_sms_notification(phone, message):
+    """
+    Utility to send SMS. Supports Twilio, MSG91 or custom Gateway.
+    Currently logs to console and database for preview.
+    """
+    print(f"\n[SMS SENT TO {phone}]: {message}\n")
+    # You can integrate Twilio here:
+    # client = Client(account_sid, auth_token)
+    # client.messages.create(body=message, from_=twilio_num, to=phone)
+    return True
+
+def send_booking_email(booking_id, name, to_email, package, date, time_val, vehicle_no):
     sender_email = os.getenv('MAIL_USER', 'thattilservicecentree@gmail.com')
-    sender_password = os.getenv('MAIL_PASS', 'yxty obey rllu thyg')
+    sender_password = os.getenv('MAIL_PASS', 'jycr hgbu cyjp bfst')
     
     if not sender_email or not sender_password:
         print("DEBUG: Missing email credentials in .env")
         return
 
-    msg = MIMEMultipart()
+    msg = MIMEMultipart('related')
     msg['From'] = f"D2 CAR WASH <{sender_email}>"
     msg['To'] = to_email
-    msg['Subject'] = f"Booking Confirmation - D2 CAR WASH (#{random.randint(1000, 9999)})"
+    msg['Subject'] = f"Booking Confirmation - D2 CAR WASH (#{booking_id})"
+
+    # Generate QR Code
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(str(booking_id))
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    img_byte_arr = io.BytesIO()
+    img.save(img_byte_arr, format='PNG')
+    qr_bytes = img_byte_arr.getvalue()
 
     body = f"""
-    <h2>Booking Confirmed!</h2>
-    <p>Dear <b>{name}</b>,</p>
-    <p>Thank you for choosing D2 CAR WASH. Your appointment has been successfully scheduled.</p>
-    <hr>
-    <p><b>Vehicle:</b> {vehicle_no}</p>
-    <p><b>Service Package:</b> {package}</p>
-    <p><b>Date:</b> {date}</p>
-    <p><b>Time:</b> {time_val}</p>
-    <hr>
-    <p>We'll see you there! Includes free coffee while you wait.</p>
-    <p>Regards,<br><b>D2 CAR WASH Team</b><br>Thrissur, Kerala</p>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+        <h2 style="color: #06b6d4; text-align: center;">Booking Confirmed!</h2>
+        <p>Dear <b>{name}</b>,</p>
+        <p>Thank you for choosing D2 CAR WASH. Your appointment has been successfully scheduled.</p>
+        <hr style="border: 0; border-top: 1px solid #eee;">
+        <p><b>Booking ID:</b> #{booking_id}</p>
+        <p><b>Vehicle:</b> {vehicle_no}</p>
+        <p><b>Service Package:</b> {package}</p>
+        <p><b>Date:</b> {date}</p>
+        <p><b>Time:</b> {time_val}</p>
+        <hr style="border: 0; border-top: 1px solid #eee;">
+        
+        <div style="text-align: center; margin: 20px 0;">
+            <p style="font-size: 14px; color: #666;">Scan this QR code at the station for verification:</p>
+            <img src="cid:qrcode" style="width: 200px; height: 200px;">
+        </div>
+
+        <p>We'll see you there! Includes free coffee while you wait.</p>
+        <p>Regards,<br><b>D2 CAR WASH Team</b><br>Thrissur, Kerala</p>
+    </div>
+    """
+    
+    msg.attach(MIMEText(body, 'html'))
+
+    # Attach QR Code Image
+    img_qr = MIMEImage(qr_bytes)
+    img_qr.add_header('Content-ID', '<qrcode>')
+    msg.attach(img_qr)
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        text = msg.as_string()
+        server.sendmail(sender_email, to_email, text)
+        server.quit()
+    except Exception as e:
+        print(f"DEBUG: Email sending error: {e}")
+
+def send_otp_email(to_email, otp):
+    sender_email = os.getenv('MAIL_USER', 'thattilservicecentree@gmail.com')
+    sender_password = os.getenv('MAIL_PASS', 'jycr hgbu cyjp bfst')
+    
+    if not sender_email or not sender_password:
+        return
+
+    msg = MIMEMultipart('related')
+    msg['From'] = f"D2 CAR WASH <{sender_email}>"
+    msg['To'] = to_email
+    msg['Subject'] = f"🔐 Your Password Reset OTP - D2 CAR WASH"
+
+    body = f"""
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; padding: 40px; color: #ffffff;">
+        <div style="max-width: 600px; margin: 0 auto; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; padding: 40px; text-align: center; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+            <div style="margin-bottom: 30px;">
+                <h1 style="color: #06b6d4; font-size: 28px; font-weight: 800; margin: 0; letter-spacing: -1px;">D2 CAR WASH</h1>
+                <p style="color: #64748b; font-size: 14px; margin-top: 5px; text-transform: uppercase; letter-spacing: 2px;">Premium Auto Detailing</p>
+            </div>
+            
+            <div style="margin-bottom: 30px;">
+                <h2 style="font-size: 24px; margin-bottom: 10px;">Reset Your Password</h2>
+                <p style="color: #94a3b8; line-height: 1.6;">We received a request to reset your password. Use the verification code below to proceed.</p>
+            </div>
+            
+            <div style="background: rgba(6, 182, 212, 0.1); border: 2px dashed #06b6d4; border-radius: 16px; padding: 20px; margin-bottom: 30px;">
+                <span style="font-size: 42px; font-weight: 900; color: #06b6d4; letter-spacing: 8px;">{otp}</span>
+            </div>
+            
+            <p style="color: #64748b; font-size: 13px; margin-bottom: 30px;">This code will expire in 10 minutes for your security.</p>
+            
+            <div style="border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 30px;">
+                <p style="color: #475569; font-size: 12px; line-height: 1.5;">If you didn't request this code, you can safely ignore this email. Someone might have typed your email address by mistake.</p>
+            </div>
+            
+            <div style="margin-top: 40px; font-size: 14px; font-weight: 600;">
+                <p style="color: #06b6d4; margin: 0;">D2 CAR WASH Team</p>
+                <p style="color: #475569; margin: 5px 0 0 0;">Thrissur, Kerala</p>
+            </div>
+        </div>
+    </div>
     """
     
     msg.attach(MIMEText(body, 'html'))
@@ -1097,11 +1512,75 @@ def send_booking_email(name, to_email, package, date, time_val, vehicle_no):
         server.sendmail(sender_email, to_email, text)
         server.quit()
     except Exception as e:
-        raise e
+        print(f"DEBUG: Failed to send OTP email: {e}")
+
+@app.route("/api/forgot-password", methods=["POST"])
+def forgot_password():
+    data = request.json
+    email = data.get("email")
+    if not email:
+        return jsonify({"success": False, "message": "Email is required"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
+    user = cursor.fetchone()
+
+    if not user:
+        cursor.close()
+        conn.close()
+        # For security, don't confirm if email exists or not
+        return jsonify({"success": True, "message": "If an account exists with this email, an OTP has been sent."})
+
+    otp = str(random.randint(100000, 999999))
+    expiry = datetime.datetime.now() + datetime.timedelta(minutes=10)
+
+    cursor.execute("UPDATE users SET reset_otp = %s, otp_expiry = %s WHERE id = %s", (otp, expiry, user['id']))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    send_otp_email(email, otp)
+    return jsonify({"success": True, "message": "If an account exists with this email, an OTP has been sent."})
+
+@app.route("/api/reset-password", methods=["POST"])
+def reset_password():
+    data = request.json
+    email = data.get("email")
+    otp = data.get("otp")
+    new_password = data.get("password")
+
+    if not email or not otp or not new_password:
+        return jsonify({"success": False, "message": "All fields are required"}), 400
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, otp_expiry FROM users WHERE email = %s AND reset_otp = %s", (email, otp))
+    user = cursor.fetchone()
+
+    if not user:
+        cursor.close()
+        conn.close()
+        return jsonify({"success": False, "message": "Invalid OTP or email"}), 400
+
+    # Check expiry
+    if user['otp_expiry'] < datetime.datetime.now():
+        cursor.close()
+        conn.close()
+        return jsonify({"success": False, "message": "OTP has expired"}), 400
+
+    hashed_pw = generate_password_hash(new_password)
+    cursor.execute("UPDATE users SET password = %s, password_hash = %s, reset_otp = NULL, otp_expiry = NULL WHERE id = %s", 
+                   (hashed_pw, hashed_pw, user['id']))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({"success": True, "message": "Password reset successful! Please login."})
 
 def send_staff_pickup_email(customer_name, contact_phone, login_phone, lat, lng):
     sender_email = os.getenv('MAIL_USER', 'thattilservicecentree@gmail.com')
-    sender_password = os.getenv('MAIL_PASS', 'yxty obey rllu thyg')
+    sender_password = os.getenv('MAIL_PASS', 'jycr hgbu cyjp bfst')
     staff_email = "delvindavis031@gmail.com"
     
     if not sender_email or not sender_password:
@@ -1135,18 +1614,10 @@ def send_staff_pickup_email(customer_name, contact_phone, login_phone, lat, lng)
     except Exception as e:
         print(f"SMTP Error: {e}")
 
+
 # =========================
 # ADMINISTRATIVE ROUTES
 # =========================
-
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if session.get('role') not in ['admin', 'master']:
-            if session.get('user_email') != "delvindavis031@gmail.com":
-                return jsonify({"success": False, "message": "Admin access required"}), 403
-        return f(*args, **kwargs)
-    return decorated_function
 
 @app.route('/api/admin/analytics', methods=['GET'])
 @admin_required
@@ -1155,22 +1626,30 @@ def get_admin_analytics():
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
         
-        # Revenue
-        cursor.execute("SELECT SUM(total_price) as revenue FROM payments")
-        rev_row = cursor.fetchone()
-        revenue = rev_row['revenue'] if rev_row and rev_row['revenue'] else 0
+        # Revenue from payments
+        try:
+            cursor.execute("SELECT SUM(amount) as revenue FROM payments")
+            rev_row = cursor.fetchone()
+            revenue = rev_row['revenue'] if rev_row and rev_row['revenue'] else 0
+        except:
+            revenue = 0
         
-        # Bookings count
+        # Total Bookings count
         cursor.execute("SELECT COUNT(*) as count FROM bookings")
         total_bookings = cursor.fetchone()['count']
         
-        # Users count
+        # Total Users count
         cursor.execute("SELECT COUNT(*) as count FROM users")
         total_users = cursor.fetchone()['count']
         
-        # Subscriptions
-        cursor.execute("SELECT COUNT(*) as count FROM subscriptions WHERE status = 'active'")
-        active_subs = cursor.fetchone()['count']
+        # Upcoming Appointments (Status Pending or Approved and date >= today)
+        today = datetime.date.today().strftime('%Y-%m-%d')
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM bookings 
+            WHERE (status = 'Pending' OR status = 'Approved') 
+            AND appointment_date >= %s
+        """, (today,))
+        upcoming = cursor.fetchone()['count']
         
         cursor.close()
         conn.close()
@@ -1179,10 +1658,46 @@ def get_admin_analytics():
             "revenue": float(revenue),
             "total_bookings": total_bookings,
             "total_users": total_users,
-            "active_subscriptions": active_subs
+            "upcoming_appointments": upcoming
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/bookings/direct', methods=['POST'])
+@admin_required
+def add_direct_booking():
+    """Manual entry for walk-in customers"""
+    data = request.json
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Insert booking
+        today_date = datetime.date.today().strftime('%Y-%m-%d')
+        now_time = datetime.datetime.now().strftime('%H:%M:%S')
+        
+        cursor.execute("""
+            INSERT INTO bookings (customer_name, phone, vehicle_number, vehicle_type, service_package, 
+                                 appointment_date, appointment_time, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'Completed')
+        """, (data['customer_name'], data['phone'], data['vehicle_number'], data['vehicle_type'], 
+              data['service_package'], today_date, now_time))
+        
+        booking_id = cursor.lastrowid
+        
+        # Record Payment (Revenue)
+        amount = float(data.get('amount', 0))
+        cursor.execute("""
+            INSERT INTO payments (booking_id, amount, payment_method)
+            VALUES (%s, %s, 'Cash')
+        """, (booking_id, amount))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"success": True, "booking_id": booking_id})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route('/api/admin/bookings', methods=['GET'])
 @admin_required
@@ -1218,13 +1733,30 @@ def update_booking_status():
         conn.commit()
         
         # Create notification for user
-        cursor.execute("SELECT user_id, customer_name, service_package FROM bookings WHERE id = %s", (booking_id,))
+        cursor.execute("SELECT user_id, customer_name, service_package, vehicle_type FROM bookings WHERE id = %s", (booking_id,))
         booking = cursor.fetchone()
         if booking and booking[0]:
             user_id = booking[0]
             msg = f"Your {booking[2]} status changed to: {new_status}"
             cursor.execute("INSERT INTO notifications (user_id, message) VALUES (%s, %s)", (user_id, msg))
             conn.commit()
+
+        # Check if we should add revenue (If status becomes 'Approved' or 'Confirmed')
+        if new_status in ['Approved', 'Confirmed', 'Completed']:
+            # Avoid duplicate payments for same booking
+            cursor.execute("SELECT COUNT(*) FROM payments WHERE booking_id = %s", (booking_id,))
+            if cursor.fetchone()[0] == 0:
+                # Lookup price from services
+                pkg = booking[2] if booking else ""
+                cursor.execute("SELECT price FROM services WHERE service_name = %s", (pkg,))
+                price_row = cursor.fetchone()
+                # Default prices if not in DB
+                defaults = {"Basic Wash": 200, "Normal": 350, "Super": 450, "Premium": 600, "Premium Plus": 800}
+                amount = price_row[0] if price_row else defaults.get(pkg, 0)
+                
+                cursor.execute("INSERT INTO payments (booking_id, amount, payment_method) VALUES (%s, %s, 'Store')", 
+                               (booking_id, amount))
+                conn.commit()
             
         cursor.close()
         conn.close()
@@ -1245,6 +1777,223 @@ def get_admin_users():
         return jsonify(serialize_db_rows(users))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/staff', methods=['GET'])
+@admin_required
+def get_admin_staff():
+    """Get all staff members"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, fullname, email, phone, created_at FROM users WHERE role = 'staff' ORDER BY created_at DESC")
+        staff = cursor.fetchall()
+        
+        # Get today's attendance status for each
+        today = datetime.date.today().strftime('%Y-%m-%d')
+        for s in staff:
+            cursor.execute("SELECT status FROM staff_attendance WHERE staff_id = %s AND date = %s", (s['id'], today))
+            attr = cursor.fetchone()
+            s['today_status'] = attr['status'] if attr else 'Not Marked'
+            
+        cursor.close()
+        conn.close()
+        return jsonify(serialize_db_rows(staff))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/staff/<int:staff_id>', methods=['GET'])
+@admin_required
+def get_staff_details(staff_id):
+    """Get full details of a staff member"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, fullname, email, phone, role, created_at FROM users WHERE id = %s", (staff_id,))
+        staff = cursor.fetchone()
+        
+        if not staff:
+            return jsonify({"success": False, "message": "Staff not found"}), 404
+            
+        # Get attendance history
+        cursor.execute("SELECT date, status, notes FROM staff_attendance WHERE staff_id = %s ORDER BY date DESC LIMIT 30", (staff_id,))
+        attendance = cursor.fetchall()
+        staff['attendance_history'] = serialize_db_rows(attendance)
+        
+        # Get assigned bookings
+        cursor.execute("SELECT id, customer_name, vehicle_number, status, appointment_date FROM bookings WHERE assigned_staff = %s ORDER BY appointment_date DESC LIMIT 10", (staff_id,))
+        bookings = cursor.fetchall()
+        staff['recent_jobs'] = serialize_db_rows(bookings)
+        
+        cursor.close()
+        conn.close()
+        return jsonify(serialize_db_row(staff))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/staff/attendance', methods=['POST'])
+@admin_required
+def mark_staff_attendance():
+    """Mark attendance for staff"""
+    data = request.json
+    staff_id = data.get('staff_id')
+    status = data.get('status') # Present or Absent
+    notes = data.get('notes', '')
+    date = datetime.date.today().strftime('%Y-%m-%d')
+    
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if already marked
+        cursor.execute("SELECT id FROM staff_attendance WHERE staff_id = %s AND date = %s", (staff_id, date))
+        existing = cursor.fetchone()
+        
+        if existing:
+            cursor.execute("UPDATE staff_attendance SET status = %s, notes = %s WHERE id = %s", (status, notes, existing[0]))
+        else:
+            cursor.execute("INSERT INTO staff_attendance (staff_id, date, status, notes) VALUES (%s, %s, %s, %s)", 
+                           (staff_id, date, status, notes))
+            
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"success": True, "message": "Attendance updated"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+@app.route("/api/admin/scan-qr", methods=["POST"])
+@admin_required
+def scan_qr():
+    if 'file' not in request.files:
+        return jsonify({"success": False, "message": "No file uploaded"}), 400
+    
+    file = request.files['file']
+    try:
+        from pyzbar.pyzbar import decode
+        from PIL import Image
+        img = Image.open(file)
+        decoded = decode(img)
+        if not decoded:
+            return jsonify({"success": False, "message": "No QR code found in image"}), 400
+        
+        booking_id = decoded[0].data.decode('utf-8')
+        booking_id = booking_id.strip()
+        return jsonify({"success": True, "booking_id": booking_id})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Scan failed: {str(e)}"}), 500
+
+
+@app.route("/api/admin/verify-booking", methods=["POST"])
+@admin_required
+def verify_booking():
+    data = request.json
+    raw_id = str(data.get("id", "")).strip()
+    if not raw_id:
+        return jsonify({"success": False, "message": "Booking ID is required"}), 400
+
+    # Detect pickup QR (encoded as PICKUP-{id})
+    is_pickup_qr = raw_id.upper().startswith("PICKUP-")
+    if is_pickup_qr:
+        booking_id = raw_id.upper().replace("PICKUP-", "").strip()
+    else:
+        booking_id = raw_id
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    if is_pickup_qr:
+        # --- Pickup QR scan → set status to Picked (Verified) ---
+        cursor.execute(
+            "SELECT b.*, u.email as user_email, u.fullname as user_name "
+            "FROM bookings b LEFT JOIN users u ON b.user_id = u.id "
+            "WHERE b.id = %s AND b.is_pickup = 1",
+            (booking_id,)
+        )
+        booking = cursor.fetchone()
+        if not booking:
+            cursor.close(); conn.close()
+            return jsonify({"success": False, "message": f"Pickup booking #{booking_id} not found"}), 404
+
+        # Set status to Picked after scanning the QR at customer location
+        cursor.execute("UPDATE bookings SET status = 'Picked' WHERE id = %s", (booking_id,))
+        if booking.get('user_id'):
+            cursor.execute(
+                "INSERT INTO notifications (user_id, message) VALUES (%s, %s)",
+                (booking['user_id'], "✅ Your vehicle has been Picked and Verified via QR scan! It's now being transported to our station.")
+            )
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({
+            "success": True,
+            "message": f"Pickup #{str(booking_id).zfill(4)} QR verified! Status updated to 'Picked'.",
+            "booking": serialize_db_row(booking)
+        })
+    else:
+        # --- Regular booking QR scan → set status to Washing ---
+        cursor.execute("""
+            SELECT b.*, u.email as user_email, u.fullname as user_name 
+            FROM bookings b 
+            LEFT JOIN users u ON b.user_id = u.id 
+            WHERE b.id = %s
+        """, (booking_id,))
+        booking = cursor.fetchone()
+
+        if not booking:
+            cursor.close()
+            conn.close()
+            return jsonify({"success": False, "message": "Booking not found"}), 404
+
+        cursor.execute("UPDATE bookings SET status = 'Washing' WHERE id = %s", (booking_id,))
+
+        try:
+            if booking.get('user_email'):
+                send_verified_email(booking['user_name'], booking['user_email'], booking.get('vehicle_number', 'N/A'))
+        except Exception as e:
+            print(f"DEBUG: Failed to send verified email: {e}")
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "message": f"Verified! Vehicle {booking.get('vehicle_number', 'N/A')} is now being washed.",
+            "booking": serialize_db_row(booking)
+        })
+
+def send_verified_email(name, to_email, vehicle_no):
+    sender_email = os.getenv('MAIL_USER', 'thattilservicecentree@gmail.com')
+    sender_password = os.getenv('MAIL_PASS', 'jycr hgbu cyjp bfst')
+    
+    if not sender_email or not sender_password:
+        return
+
+    msg = MIMEMultipart()
+    msg['From'] = f"D2 CAR WASH <{sender_email}>"
+    msg['To'] = to_email
+    msg['Subject'] = "Verified! Your Wash is Starting - D2 CAR WASH"
+
+    body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+        <h2 style="color: #06b6d4; text-align: center;">Verified & Confirmed!</h2>
+        <p>Dear <b>{name}</b>,</p>
+        <p>Your booking for vehicle <b>{vehicle_no}</b> has been verified by our admin.</p>
+        <p style="color: #06b6d4; font-size: 18px; font-weight: bold; text-align: center;">Your vehicle is now being washed! Enjoy the wash.</p>
+        <hr style="border: 0; border-top: 1px solid #eee;">
+        <p>Regards,<br><b>D2 CAR WASH Team</b><br>Thrissur, Kerala</p>
+    </div>
+    """
+    msg.attach(MIMEText(body, 'html'))
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, to_email, msg.as_string())
+        server.quit()
+    except Exception as e:
+        print(f"DEBUG: Verified email error: {e}")
 if __name__ == "__main__":
     init_db()
     port = int(os.getenv('PORT', 5000))

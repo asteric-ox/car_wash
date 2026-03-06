@@ -4,7 +4,7 @@ To enable email sending using the `booking.php` script, you must configure your 
 
 ## Credentials
 - **Email:** `thattilservicecentree@gmail.com`
-- **App Password:** `yxty obey rllu thyg`
+- **App Password:** `jycr hgbu cyjp bfst`
 
 ## Step 1: Configure php.ini
 
@@ -34,7 +34,7 @@ debug_logfile=debug.log
 
 ; YOUR GMAIL CREDENTIALS
 auth_username=thattilservicecentree@gmail.com
-auth_password=yxty obey rllu thyg
+auth_password=jycr hgbu cyjp bfst
 
 force_sender=thattilservicecentree@gmail.com
 ```

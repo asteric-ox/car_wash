@@ -4,7 +4,7 @@
     "description": "Professional Car Wash Booking System",
     "main": "app.py",
     "scripts": {
-        "start": "python app.py",
+        "start": "gunicorn --bind 0.0.0.0:$PORT --pythonpath . wsgi:application",
         "dev": "python app.py"
     }
 }
