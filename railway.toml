@@ -1,7 +1,8 @@
 [build]
 builder = "nixpacks"
+nixpacksConfigPath = "nixpacks.toml"
 
 [deploy]
 startCommand = "gunicorn --worker-class eventlet --workers 1 --bind 0.0.0.0:$PORT wsgi:application"
 restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 3
+restartPolicyMaxRetries = 10
