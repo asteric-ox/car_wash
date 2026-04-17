@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, session, send_from_directory
 from flask_cors import CORS
-import mysql.connector
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
 import random
@@ -30,26 +31,17 @@ app.config.update(
 # DATABASE CONNECTION
 # =========================
 def get_db():
-    return mysql.connector.connect(
+    return psycopg2.connect(
         host=os.getenv('DB_HOST', 'localhost'),
-        user=os.getenv('DB_USER', 'root'),
+        user=os.getenv('DB_USER', 'postgres'),
         password=os.getenv('DB_PASS', 'Delvin@2005'),
-        database=os.getenv('DB_NAME', 'car_wash')
+        database=os.getenv('DB_NAME', 'postgres'),
+        port=os.getenv('DB_PORT', 5432),
+        cursor_factory=RealDictCursor
     )
 
 def init_db():
     try:
-        # Create Database if not exists
-        temp_conn = mysql.connector.connect(
-            host=os.getenv('DB_HOST', 'localhost'),
-            user=os.getenv('DB_USER', 'root'),
-            password=os.getenv('DB_PASS', 'Delvin@2005')
-        )
-        cursor = temp_conn.cursor()
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {os.getenv('DB_NAME', 'car_wash')}")
-        cursor.close()
-        temp_conn.close()
-
         conn = get_db()
         cursor = conn.cursor()
 
@@ -214,7 +206,7 @@ def get_logged_in_user(req):
         return None
     
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("SELECT * FROM admins WHERE token = %s", (token,))
     user = cursor.fetchone()
     cursor.close()
@@ -252,7 +244,7 @@ def register():
 
         # Check if email already exists
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
         if cursor.fetchone():
             cursor.close()
@@ -280,7 +272,7 @@ def register():
         conn.close()
         print(f"DEBUG: Successfully registered {email}")
         return jsonify({"success": True, "message": "User registered successfully"})
-    except mysql.connector.IntegrityError as e:
+    except psycopg2.IntegrityError as e:
         # Handle any other integrity errors (shouldn't happen with our checks above, but just in case)
         error_msg = str(e)
         if "email" in error_msg.lower():
@@ -347,7 +339,7 @@ def login():
             })
 
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
 
         cursor.execute("SELECT * FROM users WHERE email=%s OR phone=%s", (identifier, identifier))
         user = cursor.fetchone()
@@ -431,13 +423,14 @@ def book_service():
         INSERT INTO bookings 
         (user_id, customer_name, email, phone, vehicle_type, vehicle_number, service_package, appointment_date, appointment_time, booking_date, booking_time, addons, location, is_pickup)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
         """
 
         cursor.execute(query, (
             user_id, customer_name, email, phone, vehicle_type, vehicle_number, service_package, 
             date, time_val, date, time_val, addons_str, location, is_pickup
         ))
-        booking_id = cursor.lastrowid
+        booking_id = cursor.fetchone()['id']
 
         print(f"DEBUG: Booking created successfully. ID: {booking_id}")
         
@@ -485,7 +478,7 @@ def book_service():
 def my_bookings(user_id):
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
 
         query = """
         SELECT id, service_package as service_name, appointment_date as booking_date, appointment_time as booking_time, status
@@ -531,9 +524,10 @@ def request_pickup():
         query = """
         INSERT INTO bookings (user_id, customer_name, phone, location, is_pickup, status, service_package)
         VALUES (%s, %s, %s, %s, 1, 'Pending', 'Pickup Service')
+        RETURNING id
         """
         cursor.execute(query, (user_id, customer_name, contact_phone, location_str))
-        booking_id = cursor.lastrowid
+        booking_id = cursor.fetchone()['id']
         conn.commit()
         cursor.close()
         conn.close()
@@ -552,7 +546,7 @@ def request_pickup():
 def get_pickup_status(booking_id):
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         cursor.execute("SELECT status FROM bookings WHERE id = %s", (booking_id,))
         row = cursor.fetchone()
         cursor.close()
@@ -571,7 +565,7 @@ def get_notifications():
         return jsonify([])
 
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     try:
         cursor.execute("SELECT * FROM notifications WHERE user_id = %s ORDER BY created_at DESC LIMIT 10", (user_id,))
         notifs = cursor.fetchall()
@@ -592,7 +586,7 @@ def get_slots():
     end = request.args.get('end')
     
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     
     try:
         if start and end:
@@ -629,7 +623,7 @@ def get_slots():
 @app.route('/api/status', methods=['GET'])
 def get_shop_status():
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("SELECT * FROM shop_status WHERE id = 1")
     row = cursor.fetchone()
     cursor.close()
@@ -656,7 +650,7 @@ def get_weather():
 @app.route('/api/loyalty/<phone>', methods=['GET'])
 def get_loyalty(phone):
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     cursor.execute("SELECT stamps FROM users WHERE phone = %s", (phone,))
     user = cursor.fetchone()
     cursor.close()
@@ -806,7 +800,7 @@ def get_packages():
     """Get all active service packages"""
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         cursor.execute("SELECT * FROM packages WHERE is_active = 1 ORDER BY price ASC")
         packages = cursor.fetchall()
         cursor.close()
@@ -820,7 +814,7 @@ def get_addons():
     """Get all active add-ons"""
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         cursor.execute("SELECT * FROM addons WHERE is_active = 1 ORDER BY price ASC")
         addons = cursor.fetchall()
         cursor.close()
@@ -840,12 +834,12 @@ def create_subscription():
     
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         
         # Check if user already has an active subscription
         cursor.execute("""
             SELECT * FROM subscriptions 
-            WHERE user_id = %s AND status = 'active' AND end_date >= CURDATE()
+            WHERE user_id = %s AND status = 'active' AND end_date >= CURRENT_DATE
         """, (user_id,))
         
         existing = cursor.fetchone()
@@ -857,11 +851,12 @@ def create_subscription():
         # Create new subscription (30 days from now)
         cursor.execute("""
             INSERT INTO subscriptions (user_id, plan_name, price, start_date, end_date, status)
-            VALUES (%s, 'Unlimited Club', 999.00, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY), 'active')
+            VALUES (%s, 'Unlimited Club', 999.00, CURRENT_DATE, CURRENT_DATE + INTERVAL '30 days', 'active')
+            RETURNING id
         """, (user_id,))
         
         conn.commit()
-        subscription_id = cursor.lastrowid
+        subscription_id = cursor.fetchone()['id']
         
         cursor.close()
         conn.close()
@@ -884,10 +879,10 @@ def get_subscription_status():
     
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM subscriptions 
-            WHERE user_id = %s AND status = 'active' AND end_date >= CURDATE()
+            WHERE user_id = %s AND status = 'active' AND end_date >= CURRENT_DATE
             ORDER BY end_date DESC LIMIT 1
         """, (user_id,))
         
@@ -915,7 +910,7 @@ def get_loyalty_status():
     
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         
         # Get or create loyalty record
         cursor.execute("SELECT * FROM loyalty_points WHERE user_id = %s", (user_id,))
@@ -946,7 +941,7 @@ def update_loyalty():
     
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         
         # Get current loyalty
         cursor.execute("SELECT * FROM loyalty_points WHERE user_id = %s", (user_id,))
@@ -955,7 +950,7 @@ def update_loyalty():
         if not loyalty:
             cursor.execute("""
                 INSERT INTO loyalty_points (user_id, total_washes, free_washes, points, last_wash_date)
-                VALUES (%s, 1, 0, 10, CURDATE())
+                VALUES (%s, 1, 0, 10, CURRENT_DATE)
             """, (user_id,))
         else:
             total_washes = loyalty['total_washes'] + 1
@@ -968,7 +963,7 @@ def update_loyalty():
             
             cursor.execute("""
                 UPDATE loyalty_points 
-                SET total_washes = %s, free_washes = %s, points = %s, last_wash_date = CURDATE()
+                SET total_washes = %s, free_washes = %s, points = %s, last_wash_date = CURRENT_DATE
                 WHERE user_id = %s
             """, (total_washes, free_washes, points, user_id))
         
@@ -985,7 +980,7 @@ def get_stations():
     """Get all stations with their current status"""
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT s.*, b.customer_name, b.vehicle_number, b.service_package
             FROM stations s
@@ -1153,7 +1148,7 @@ def admin_required(f):
 def get_admin_analytics():
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         
         # Revenue
         cursor.execute("SELECT SUM(total_price) as revenue FROM payments")
@@ -1190,7 +1185,7 @@ def get_admin_bookings():
     date = request.args.get('date')
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         
         if date:
             cursor.execute("SELECT * FROM bookings WHERE appointment_date = %s ORDER BY appointment_time", (date,))
@@ -1237,7 +1232,7 @@ def update_booking_status():
 def get_admin_users():
     try:
         conn = get_db()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         cursor.execute("SELECT id, fullname, email, phone, role, created_at FROM users ORDER BY created_at DESC")
         users = cursor.fetchall()
         cursor.close()

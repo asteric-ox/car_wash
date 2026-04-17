@@ -1,7 +1,8 @@
 flask
 flask-cors
 flask-socketio
-mysql-connector-python
+psycopg2-binary
 python-dotenv
 werkzeug
 pillow
+gunicorn
