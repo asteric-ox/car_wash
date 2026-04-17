@@ -31,14 +31,25 @@ app.config.update(
 # DATABASE CONNECTION
 # =========================
 def get_db():
-    return psycopg2.connect(
-        host=os.getenv('DB_HOST', 'localhost'),
-        user=os.getenv('DB_USER', 'postgres'),
-        password=os.getenv('DB_PASS', 'Delvin@2005'),
-        database=os.getenv('DB_NAME', 'postgres'),
-        port=os.getenv('DB_PORT', 5432),
-        cursor_factory=RealDictCursor
-    )
+    try:
+        # 1. Try Connection String (Recommended for Supabase/Vercel)
+        db_url = os.getenv('DATABASE_URL')
+        if db_url:
+            return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+        
+        # 2. Fallback to individual parameters
+        return psycopg2.connect(
+            host=os.getenv('DB_HOST', 'localhost'),
+            user=os.getenv('DB_USER', 'postgres'),
+            password=os.getenv('DB_PASS'),
+            database=os.getenv('DB_NAME', 'postgres'),
+            port=os.getenv('DB_PORT', 5432),
+            cursor_factory=RealDictCursor,
+            connect_timeout=5
+        )
+    except Exception as e:
+        print(f"DATABASE CONNECTION ERROR: {e}")
+        raise e
 
 def init_db():
     try:
