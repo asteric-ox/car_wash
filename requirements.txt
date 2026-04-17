@@ -1,0 +1,7 @@
+flask
+flask-cors
+flask-socketio
+mysql-connector-python
+python-dotenv
+werkzeug
+pillow
