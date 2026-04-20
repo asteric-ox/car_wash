@@ -5,4 +5,3 @@ werkzeug
 pillow
 pymongo
 gunicorn
-bson
