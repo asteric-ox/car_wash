@@ -32,7 +32,8 @@ app.config.update(
 # =========================
 def get_db():
     client = MongoClient(os.getenv('MONGO_URI', 'mongodb://localhost:27017/car_wash'))
-    return client.get_database()
+    # Return car_wash database by default to avoid "No default database defined" error on Railway
+    return client.get_database('car_wash')
 
 def init_db():
     try:
