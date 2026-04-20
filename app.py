@@ -955,8 +955,10 @@ def get_admin_users():
         return jsonify(serialize_db_rows(users))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+# Initialize DB on startup
+init_db()
+
 if __name__ == "__main__":
-    init_db()
     port = int(os.getenv('PORT', 5000))
     print(f"Server running on http://localhost:{port}")
     app.run(host='0.0.0.0', port=port, debug=True)
