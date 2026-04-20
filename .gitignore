@@ -8,4 +8,4 @@ venv/
 .idea/
 public/uploads/profiles/*
 !public/uploads/profiles/.gitkeep
-migrate_to_mongo.py
+# migrate_to_mongo.py
