@@ -1,8 +1,8 @@
 flask
 flask-cors
-flask-socketio
-psycopg2-binary
 python-dotenv
 werkzeug
 pillow
+pymongo
 gunicorn
+bson
